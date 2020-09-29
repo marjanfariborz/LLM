@@ -50,7 +50,7 @@ MemScheduler::MemScheduler(MemSchedulerParams *params) :
 Port &
 MemScheduler::getPort(const std::string &if_name, PortID idx)
 {
-    panic_if(idx != InvalidPortID, "This object doesn't support vector ports");
+    // panic_if(idx != InvalidPortID, "This object doesn't support vector ports");
 
     // This is the name from the Python SimObject declaration (MemScheduler.py)
     if (if_name == "mem_side" && idx < memPorts.size()) {
