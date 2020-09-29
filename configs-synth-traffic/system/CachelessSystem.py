@@ -32,13 +32,17 @@ class CachelessSystem(System):
         self.createMemoryCtrl(mem_type, num_chnls,
                             addr_range, addr_map)
 
-        for mem_ctrl in self.mem_ctrls:
-            mem_ctrl.port = self.membus.master
+        # for mem_ctrl in self.mem_ctrls:
+        #     mem_ctrl.port = self.membus.master
 
         self.tgen = PyTrafficGen()
-        self.monitor = MemScheduler()
-        self.tgen.port = self.monitor.cpu_side
-        self.monitor.mem_side = self.membus.slave
+        self.sched = MemScheduler()
+        self.tgen.port = self.membus.slave
+        self.membus.master = self.sched.cpu_side
+        # self.sched.mem_side = self.mem_ctrls
+        self.sched.nbr_channels = len(self.mem_ctrls)
+        for i, mem_ctrl in enumerate(self.mem_ctrls):
+            mem_ctrl.port = self.sched.mem_side[i]
         self.system_port = self.membus.slave
 
     def getCachelineSize(self, mem_type):
