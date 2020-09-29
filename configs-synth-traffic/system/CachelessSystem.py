@@ -32,14 +32,10 @@ class CachelessSystem(System):
         self.createMemoryCtrl(mem_type, num_chnls,
                             addr_range, addr_map)
 
-        # for mem_ctrl in self.mem_ctrls:
-        #     mem_ctrl.port = self.membus.master
-
         self.tgen = PyTrafficGen()
         self.sched = MemScheduler()
         self.tgen.port = self.membus.slave
         self.membus.master = self.sched.cpu_side
-        # self.sched.mem_side = self.mem_ctrls
         self.sched.nbr_channels = len(self.mem_ctrls)
         for i, mem_ctrl in enumerate(self.mem_ctrls):
             mem_ctrl.port = self.sched.mem_side[i]
@@ -74,6 +70,7 @@ class CachelessSystem(System):
                             xorHighBit = 0,
                             intlvBits = intlv_bits,
                             intlvMatch = chnl)
+
                 ctrl = MemCtrl()
                 # ctrl.write_buffer_size = interface.write_buffer_size
                 # ctrl.read_buffer_size = interface.read_buffer_size
