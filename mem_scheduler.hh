@@ -233,6 +233,8 @@ class MemScheduler : public SimObject
     std::vector<PacketPtr> readQueue;
     std::vector<PacketPtr> writeQueue;
     /// True if this is currently blocked waiting for a response.
+    bool readBlocked;
+    bool writeBlocked;
     bool blocked;
 
   public:

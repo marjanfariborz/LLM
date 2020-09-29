@@ -40,6 +40,9 @@ MemScheduler::MemScheduler(MemSchedulerParams *params) :
     numberPorts(params->nbr_channels),
     blocked(false)
 {
+    panic_if(readBufferSize == 0, "readBufferSize should be non-zero");
+    panic_if(writeBufferSize == 0, "writeBufferSize "
+                                    "should be non-zero");
     for (uint32_t i = 0; i < numberPorts; ++i){
         MemSidePort *port = new MemSidePort(".mem_side" +
                                             std::to_string(i), this);
@@ -169,23 +172,40 @@ MemScheduler::MemSidePort::recvRangeChange()
 bool
 MemScheduler::handleRequest(PacketPtr pkt)
 {
-    if (blocked) {
-        // There is currently an outstanding request. Stall.
+    panic_if(!(pkt->isRead() || pkt->isWrite()),
+             "Should only see read and writes at memory controller\n");
+    if (pkt->isRead() && readBlocked)
         return false;
-    }
+
+    if (pkt->isWrite() && writeBlocked)
+        return false;
 
     DPRINTF(MemScheduler, "Got request for addr %#x\n", pkt->getAddr());
 
-    // This memobj is now blocked waiting for the response to this packet.
-    blocked = true;
-    const Addr base_addr = pkt->getAddr();
-    // Simply forward to the memory port
-    for (auto memPort : memPorts)
-        // AddrRangeList addr_range = memPort->getAddrRanges();
-        for (auto addr_range : memPort->getAddrRanges())
-            if (addr_range.contains(base_addr) ){
-                memPort->sendPacket(pkt);
-            }
+    bool wakeDequeue = false;
+    if (readQueue.empty() && writeQueue.empty())
+        wakeDequeue = true;
+
+    if (pkt->isRead()){
+        readQueue.push_back(pkt);
+        if(readQueue.size() == readBufferSize)
+            readBlocked = true;
+    }
+    if (pkt->isWrite()){
+        writeQueue.push_back(pkt);
+        if(writeQueue.size() == writeBufferSize)
+            writeBlocked = true;
+    }
+    // TODO: Schedule send packet, ignore the rest
+    if (wakeDequeue)
+        return true;
+
+    // for (auto memPort : memPorts)
+    //     // AddrRangeList addr_range = memPort->getAddrRanges();
+    //     for (auto addr_range : memPort->getAddrRanges())
+    //         if (addr_range.contains(base_addr) ){
+    //             memPort->sendPacket(pkt);
+    //         }
 
 
     return true;
