@@ -35,7 +35,6 @@ class MemScheduler(SimObject):
     cpu_side = ResponsePort("CPU side port, receives requests")
     mem_side = VectorRequestPort("Ports on the memory "
                                         "controllers side")
-    mem_ctrls = VectorParam.MemCtrl("Dishdiridirin")
     nbr_channels = Param.Int(8, "Number of channles this MemScheduler "
                                 "is reposible for")
     read_buffer_size = Param.Int(8, "Size of the internal read buffer")

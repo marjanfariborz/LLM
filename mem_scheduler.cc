@@ -183,9 +183,9 @@ MemScheduler::handleRequest(PacketPtr pkt)
     for (auto memPort : memPorts)
         // AddrRangeList addr_range = memPort->getAddrRanges();
         for (auto addr_range : memPort->getAddrRanges())
-            if (addr_range.start() <= base_addr &&
-                    base_addr <= addr_range.end())
+            if (addr_range.contains(base_addr) ){
                 memPort->sendPacket(pkt);
+            }
 
 
     return true;
