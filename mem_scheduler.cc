@@ -40,14 +40,15 @@ MemScheduler::MemScheduler(MemSchedulerParams *params) :
     writeBufferSize(params->write_buffer_size),
     numberPorts(params->nbr_channels),
     numberQueues(params->nbr_cpus),
+    queueIndex(0),
     blocked(false)
 {
 
     panic_if(readBufferSize == 0, "readBufferSize should be non-zero");
     panic_if(writeBufferSize == 0, "writeBufferSize "
                                     "should be non-zero");
-    readQueue = new std::vector<PacketPtr>[numberQueues];
-    writeQueue = new std::vector<PacketPtr>[numberQueues];
+    readQueue = new std::queue<PacketPtr>[numberQueues];
+    writeQueue = new std::queue<PacketPtr>[numberQueues];
     readBlocked = new bool[numberQueues];
     writeBlocked = new bool[numberQueues];
     for (uint32_t i = 0; i < numberPorts; ++i){
@@ -144,11 +145,11 @@ void
 MemScheduler::MemSidePort::sendPacket(PacketPtr pkt)
 {
     // Note: This flow control is very simple since the memobj is blocking.
-
-    panic_if(blockedPacket != nullptr, "Should never try to send if blocked!");
+    panic_if(blockedPacket != nullptr, "Should never try to send if blocked MemSide!");
 
     // If we can't send the packet across the port, store it for later.
     if (!sendTimingReq(pkt)) {
+        std::cout << "#########################" << std::endl;
         blockedPacket = pkt;
     }
 }
@@ -196,12 +197,12 @@ MemScheduler::handleRequest(PacketPtr pkt)
     DPRINTF(MemScheduler, "Got request for addr %#x\n", pkt->getAddr());
 
     if (pkt->isRead()){
-        readQueue[requestorId].push_back(pkt);
+        readQueue[requestorId].push(pkt);
         if(readQueue[requestorId].size() == readBufferSize)
             readBlocked[requestorId] = true;
     }
     if (pkt->isWrite()){
-        writeQueue[requestorId].push_back(pkt);
+        writeQueue[requestorId].push(pkt);
         if(writeQueue[requestorId].size() == writeBufferSize)
             writeBlocked[requestorId] = true;
     }
@@ -227,15 +228,38 @@ void
 MemScheduler::processNextReqEvent(){
     // //arbiter
     // std::cout << "***************************" << std::endl;
-    std::cout << "Entered processNextReqEvent" << std::endl;
-    if (!readQueue[0].empty())
-        std::cout << readQueue[0].back() << std::endl;
-    schedule(nextReqEvent, curTick() + 1);
+    // std::cout << "Entered processNextReqEvent" << std::endl;
+    // if (!readQueue[0].empty())
+    //     std::cout << readQueue[0].back() << std::endl;
+    // schedule(nextReqEvent, curTick() + 1);
+
+    uint32_t initialQueueIndex = queueIndex-1;
+    while (readQueue[queueIndex].empty()){
+        if (initialQueueIndex == queueIndex)
+            return;
+        if (queueIndex < numberQueues)
+            queueIndex++;
+        if (queueIndex == numberQueues)
+            queueIndex = 0;
+    }
+    PacketPtr pkt = readQueue[queueIndex].front();
+    const Addr base_addr = pkt->getAddr();
+    for (auto memPort : memPorts)
+        // AddrRangeList addr_range = memPort->getAddrRanges();
+        for (auto addr_range : memPort->getAddrRanges())
+            if (addr_range.contains(base_addr) ){
+                std::cout << "***************************" << std::endl;
+                std::cout << "Sending pkt: " << queueIndex << std::endl;
+                memPort->sendPacket(pkt);
+            }
+
+    readQueue[queueIndex].pop();
+    schedule(nextReqEvent, curTick());
 }
 bool
 MemScheduler::handleResponse(PacketPtr pkt)
 {
-    assert(blocked);
+
     DPRINTF(MemScheduler, "Got response for addr %#x\n", pkt->getAddr());
 
     // The packet is now done. We're about to put it in the port, no need for
@@ -243,7 +267,6 @@ MemScheduler::handleResponse(PacketPtr pkt)
     // We need to free the resource before sending the packet in case the CPU
     // tries to send another request immediately (e.g., in the same callchain).
     blocked = false;
-
     // Simply forward to the memory port
     cpuPort.sendPacket(pkt);
 

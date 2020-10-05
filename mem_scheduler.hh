@@ -29,6 +29,8 @@
 #ifndef __LEARNING_GEM5_PART2_SIMPLE_MEMOBJ_HH__
 #define __LEARNING_GEM5_PART2_SIMPLE_MEMOBJ_HH__
 
+#include <queue>
+
 #include "mem/port.hh"
 #include "params/MemScheduler.hh"
 #include "sim/sim_object.hh"
@@ -231,19 +233,15 @@ class MemScheduler : public SimObject
     const uint32_t writeBufferSize;
     const uint32_t numberPorts;
     const uint32_t numberQueues;
+    uint32_t queueIndex;
+    bool blocked;
 
-    // std::vector<MemPacketQueue> readQueue;
-    // std::vector<MemPacketQueue> writeQueue;
-    std::vector<PacketPtr> *readQueue;
-    std::vector<PacketPtr> *writeQueue;
+    std::queue<PacketPtr> *readQueue;
+    std::queue<PacketPtr> *writeQueue;
 
     /// True if this is currently blocked waiting for a response.
     bool *readBlocked;
     bool *writeBlocked;
-    //TODO: delete this
-    bool blocked;
-
-
 
 
   public:
