@@ -77,7 +77,8 @@ root = Root(full_system = False, system = system)
 m5.instantiate()
 
 if options.mode == 'LINEAR':
-    system.tgen.start(createLinearTraffic(system, options))
+    for tgen in system.tgens:
+        tgen.start(createLinearTraffic(tgen, options))
 elif options.mode == 'RANDOM':
     system.tgen.start(createRandomTraffic(system, options))
 elif options.mode == 'DRAM':

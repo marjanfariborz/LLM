@@ -11,6 +11,7 @@ from info import *
 from ds3ini import *
 
 class CachelessSystem(System):
+
     def __init__(self, mem_type, num_chnls):
         super(CachelessSystem, self).__init__()
         mem_size = self.getMemSize(mem_type, num_chnls)
@@ -31,15 +32,24 @@ class CachelessSystem(System):
 
         self.createMemoryCtrl(mem_type, num_chnls,
                             addr_range, addr_map)
+        # self.tgens = list()
 
-        self.tgen = PyTrafficGen()
+        # self.tgens.append(PyTrafficGen())
         self.sched = MemScheduler()
-        self.tgen.port = self.membus.slave
+        self.sched.nbr_cpus = 2
+        tgens = []
+        for i in range(self.sched.nbr_cpus):
+            tgens.append(PyTrafficGen())
+        self.tgens = tgens
+        for tgen in self.tgens:
+            tgen.port = self.membus.slave
         self.membus.master = self.sched.cpu_side
         self.sched.nbr_channels = len(self.mem_ctrls)
         for i, mem_ctrl in enumerate(self.mem_ctrls):
             mem_ctrl.port = self.sched.mem_side[i]
         self.system_port = self.membus.slave
+
+
 
     def getCachelineSize(self, mem_type):
         return cache_line_size[mem_type]
