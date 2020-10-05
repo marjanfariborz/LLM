@@ -40,3 +40,4 @@ class MemScheduler(SimObject):
     read_buffer_size = Param.Int(8, "Size of the internal read buffer")
     write_buffer_size = Param.Int(8, "Size of the internal "
                                     "write buffer")
+    nbr_cpus = Param.Int("Number of CPUs")

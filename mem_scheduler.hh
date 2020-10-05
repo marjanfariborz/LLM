@@ -224,18 +224,27 @@ class MemScheduler : public SimObject
     /// Instantiation of the memory-side port
     std::vector<MemSidePort*> memPorts;
 
+    void processNextReqEvent();
+    EventFunctionWrapper nextReqEvent;
+
     const uint32_t readBufferSize;
     const uint32_t writeBufferSize;
-    uint32_t numberPorts;
+    const uint32_t numberPorts;
+    const uint32_t numberQueues;
 
     // std::vector<MemPacketQueue> readQueue;
     // std::vector<MemPacketQueue> writeQueue;
-    std::vector<PacketPtr> readQueue;
-    std::vector<PacketPtr> writeQueue;
+    std::vector<PacketPtr> *readQueue;
+    std::vector<PacketPtr> *writeQueue;
+
     /// True if this is currently blocked waiting for a response.
-    bool readBlocked;
-    bool writeBlocked;
+    bool *readBlocked;
+    bool *writeBlocked;
+    //TODO: delete this
     bool blocked;
+
+
+
 
   public:
 
