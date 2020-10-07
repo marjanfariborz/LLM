@@ -37,9 +37,9 @@ class CachelessSystem(System):
         # self.tgens.append(PyTrafficGen())
         self.sched = MemScheduler()
         self.sched.nbr_cpus = 2
-        tgens = []
-        for i in range(self.sched.nbr_cpus):
-            tgens.append(PyTrafficGen())
+        tgens = [PyTrafficGen() for i in range(self.sched.nbr_cpus)]
+        # for i in range(self.sched.nbr_cpus):
+        #     tgens.append(PyTrafficGen())
         self.tgens = tgens
         for tgen in self.tgens:
             tgen.port = self.membus.slave

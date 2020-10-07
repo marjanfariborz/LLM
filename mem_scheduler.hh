@@ -29,6 +29,7 @@
 #ifndef __LEARNING_GEM5_PART2_SIMPLE_MEMOBJ_HH__
 #define __LEARNING_GEM5_PART2_SIMPLE_MEMOBJ_HH__
 
+#include <unordered_map>
 #include <queue>
 
 #include "mem/port.hh"
@@ -236,12 +237,16 @@ class MemScheduler : public SimObject
     uint32_t queueIndex;
     bool blocked;
 
-    std::queue<PacketPtr> *readQueue;
-    std::queue<PacketPtr> *writeQueue;
+    // std::queue<PacketPtr> *readQueue;
+    // std::queue<PacketPtr> *writeQueue;
+    std::unordered_map<RequestorID, std::queue<PacketPtr> >::iterator currentReadEntry;
+    std::unordered_map<RequestorID, std::queue<PacketPtr> >::iterator currentWriteEntry;
+    std::unordered_map<RequestorID, std::queue<PacketPtr> > readQueues;
+    std::unordered_map<RequestorID, std::queue<PacketPtr> > writeQueues;
 
     /// True if this is currently blocked waiting for a response.
-    bool *readBlocked;
-    bool *writeBlocked;
+    std::unordered_map<RequestorID, bool> readBlocked;
+    std::unordered_map<RequestorID, bool> writeBlocked;
 
 
   public:

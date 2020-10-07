@@ -47,19 +47,19 @@ MemScheduler::MemScheduler(MemSchedulerParams *params) :
     panic_if(readBufferSize == 0, "readBufferSize should be non-zero");
     panic_if(writeBufferSize == 0, "writeBufferSize "
                                     "should be non-zero");
-    readQueue = new std::queue<PacketPtr>[numberQueues];
-    writeQueue = new std::queue<PacketPtr>[numberQueues];
-    readBlocked = new bool[numberQueues];
-    writeBlocked = new bool[numberQueues];
+    // readQueues = new std::unordered_map<RequestorID, std:queue<PacketPtr> > readQueues;
+    // writeQueues = new std::unordered_map<RequestorID, std:queue<PacketPtr> > readQueues;
+    // readBlocked = new std::unordered_map<RequestorID, bool>;
+    // writeBlocked = new std::unordered_map<RequestorID, bool>;
+
     for (uint32_t i = 0; i < numberPorts; ++i){
         MemSidePort *port = new MemSidePort(".mem_side" +
                                             std::to_string(i), this);
         memPorts.push_back(port);
     }
-    for (uint32_t i = 0; i < numberQueues; ++i){
-        readBlocked[i] = false;
-        writeBlocked[i] = false;
-    }
+
+    currentReadEntry = readQueues.begin();
+    currentWriteEntry = writeQueues.begin();
 }
 
 Port &
@@ -184,10 +184,19 @@ MemScheduler::MemSidePort::recvRangeChange()
 bool
 MemScheduler::handleRequest(PacketPtr pkt)
 {
-    uint32_t requestorId = pkt->req->requestorId() - 3;
+    uint32_t requestorId = pkt->req->requestorId();
 
     panic_if(!(pkt->isRead() || pkt->isWrite()),
              "Should only see read and writes at memory controller\n");
+
+    std::unordered_map<RequestorID, bool>::const_iterator rit = readBlocked.find(requestorId);
+    if(rit == readBlocked.end())
+        readBlocked[requestorId] = false;
+
+    std::unordered_map<RequestorID, bool>::const_iterator wit = writeBlocked.find(requestorId);
+    if(wit == writeBlocked.end())
+        writeBlocked[requestorId] = false;
+
     if (pkt->isRead() && readBlocked[requestorId])
         return false;
 
@@ -197,22 +206,31 @@ MemScheduler::handleRequest(PacketPtr pkt)
     DPRINTF(MemScheduler, "Got request for addr %#x\n", pkt->getAddr());
 
     if (pkt->isRead()){
-        readQueue[requestorId].push(pkt);
-        if(readQueue[requestorId].size() == readBufferSize)
+        readQueues[requestorId].push(pkt);
+        if(readQueues[requestorId].size() == readBufferSize)
             readBlocked[requestorId] = true;
     }
     if (pkt->isWrite()){
-        writeQueue[requestorId].push(pkt);
-        if(writeQueue[requestorId].size() == writeBufferSize)
+        writeQueues[requestorId].push(pkt);
+        if(writeQueues[requestorId].size() == writeBufferSize)
             writeBlocked[requestorId] = true;
     }
-
+    // for (auto it : readQueues){
+    //     std::cout << "************************" << std::endl;
+    //     std::cout << "requestorId: " << it.first << "\t" << currentReadEntry << std::endl;
+    //     std::cout << "queueSize" << it.second.size() << std::endl;
+    // }
     // TODO: Schedule send packet, ignore the rest
     if (!nextReqEvent.scheduled()){
+        if (pkt->isRead())
+            currentReadEntry = readQueues.find(requestorId);
+        if (pkt->isWrite())
+            currentWriteEntry = writeQueues.find(requestorId);
         schedule(nextReqEvent, curTick());
-        std::cout << "***************************" << std::endl;
-        // std::cout << "Entered processNextReqEvent" << std::endl;
     }
+
+    //     // std::cout << "Entered processNextReqEvent" << std::endl;
+
     // const Addr base_addr = pkt->getAddr();
     // for (auto memPort : memPorts)
     //     // AddrRangeList addr_range = memPort->getAddrRanges();
@@ -220,42 +238,57 @@ MemScheduler::handleRequest(PacketPtr pkt)
     //         if (addr_range.contains(base_addr) ){
     //             memPort->sendPacket(pkt);
     //         }
-
-
     return true;
 }
+
 void
 MemScheduler::processNextReqEvent(){
-    // //arbiter
     // std::cout << "***************************" << std::endl;
     // std::cout << "Entered processNextReqEvent" << std::endl;
-    // if (!readQueue[0].empty())
+    // if (!readQueue[].empty())
     //     std::cout << readQueue[0].back() << std::endl;
     // schedule(nextReqEvent, curTick() + 1);
+    // currentReadEntry = readQueues.begin();
+    //TODO: Add write logic
 
-    uint32_t initialQueueIndex = queueIndex-1;
-    while (readQueue[queueIndex].empty()){
-        if (initialQueueIndex == queueIndex)
+    // PacketPtr pkt = currentReadEntry->second.front();
+    // const Addr base_addr = pkt->getAddr();
+    // for (auto memPort : memPorts)
+    //   // AddrRangeList addr_range = memPort->getAddrRanges();
+        // for (auto addr_range : memPort->getAddrRanges())
+        //     if (addr_range.contains(base_addr) ){
+                // std::cout << "***************************" << std::endl;
+        //         std::cout << "Sending pkt: " << queueIndex << std::endl;
+        //         memPort->sendPacket(pkt);
+        //     }
+    std::unordered_map<RequestorID, std::queue<PacketPtr> >::iterator initialEntry = currentReadEntry;
+    while (currentReadEntry->second.empty()){
+        if (initialEntry == currentReadEntry)
             return;
-        if (queueIndex < numberQueues)
-            queueIndex++;
-        if (queueIndex == numberQueues)
-            queueIndex = 0;
+        if (currentReadEntry != readQueues.end())
+            currentReadEntry++;
+        if (currentReadEntry == readQueues.end())
+            currentReadEntry = readQueues.begin();
     }
-    PacketPtr pkt = readQueue[queueIndex].front();
-    const Addr base_addr = pkt->getAddr();
-    for (auto memPort : memPorts)
-        // AddrRangeList addr_range = memPort->getAddrRanges();
-        for (auto addr_range : memPort->getAddrRanges())
-            if (addr_range.contains(base_addr) ){
-                std::cout << "***************************" << std::endl;
-                std::cout << "Sending pkt: " << queueIndex << std::endl;
-                memPort->sendPacket(pkt);
-            }
-
-    readQueue[queueIndex].pop();
-    schedule(nextReqEvent, curTick());
+    currentReadEntry->second.pop();
+    currentReadEntry++;
+    if (currentReadEntry == readQueues.end())
+            currentReadEntry = readQueues.begin();
+    initialEntry = currentReadEntry;
+    //TODO: Fix seg fault here
+    // After increasing iterator, it might point to
+    // null entry
+    while (currentReadEntry->second.empty()){
+        if (initialEntry == currentReadEntry)
+            return;
+        if (currentReadEntry != readQueues.end())
+            currentReadEntry++;
+        if (currentReadEntry == readQueues.end())
+            currentReadEntry = readQueues.begin();
+    }
+    schedule(nextReqEvent, curTick()+100);
 }
+
 bool
 MemScheduler::handleResponse(PacketPtr pkt)
 {
