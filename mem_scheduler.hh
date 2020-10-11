@@ -139,17 +139,17 @@ class MemScheduler : public SimObject
       private:
         /// The object that owns this object (MemScheduler)
         MemScheduler *owner;
-
+        bool hasBlockedEntry;
         /// If we tried to send a packet and it was blocked, store it here
-        PacketPtr blockedPacket;
+        std::unordered_map<RequestorID, std::queue<PacketPtr> >::iterator blockedQueueEntry;
 
       public:
         /**
          * Constructor. Just calls the superclass constructor.
          */
         MemSidePort(const std::string& name, MemScheduler *owner) :
-            RequestPort(name, owner), owner(owner), blockedPacket(nullptr)
-        { }
+            RequestPort(name, owner), owner(owner), hasBlockedEntry(false)
+        {}
 
         /**
          * Send a packet across this port. This is called by the owner and
@@ -158,6 +158,8 @@ class MemScheduler : public SimObject
          * @param packet to send.
          */
         void sendPacket(PacketPtr pkt);
+
+        bool getHasBlockedEntry(void);
 
       protected:
         /**
@@ -248,6 +250,7 @@ class MemScheduler : public SimObject
     std::unordered_map<RequestorID, bool> readBlocked;
     std::unordered_map<RequestorID, bool> writeBlocked;
 
+    MemSidePort* findMemoryPort(PacketPtr pkt);
 
   public:
 
