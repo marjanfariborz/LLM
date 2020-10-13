@@ -34,14 +34,14 @@
 MemScheduler::MemScheduler(MemSchedulerParams *params) :
     SimObject(params),
     cpuPort(params->name + ".cpu_side", this),
-    // memPort(params->name + ".mem_side", this),
     nextReqEvent([this]{ processNextReqEvent(); }, name()),
+    nextRespEvent([this]{ processNextRespEvent(); }, name()),
     readBufferSize(params->read_buffer_size),
     writeBufferSize(params->write_buffer_size),
+    respBufferSize(params->resp_buffer_size),
     numberPorts(params->nbr_channels),
     numberQueues(params->nbr_cpus),
-    queueIndex(0),
-    blocked(false)
+    respBlocked(false)
 {
 
     panic_if(readBufferSize == 0, "readBufferSize should be non-zero");
@@ -61,7 +61,6 @@ MemScheduler::MemScheduler(MemSchedulerParams *params) :
 Port &
 MemScheduler::getPort(const std::string &if_name, PortID idx)
 {
-    // panic_if(idx != InvalidPortID, "This object doesn't support vector ports");
 
     // This is the name from the Python SimObject declaration (MemScheduler.py)
     if (if_name == "mem_side" && idx < memPorts.size()) {
@@ -80,6 +79,7 @@ MemScheduler::CPUSidePort::sendPacket(PacketPtr pkt)
     // Note: This flow control is very simple since the memobj is blocking.
 
     panic_if(blockedPacket != nullptr, "Should never try to send if blocked!");
+
     // If we can't send the packet across the port, store it for later.
     if (!sendTimingResp(pkt)) {
         blockedPacket = pkt;
@@ -213,7 +213,6 @@ MemScheduler::handleRequest(PacketPtr pkt)
         if(writeQueues[requestorId].size() == writeBufferSize)
             writeBlocked[requestorId] = true;
     }
-    // TODO: Schedule send packet, ignore the rest
     if (!nextReqEvent.scheduled()){
         if (pkt->isRead())
             currentReadEntry = readQueues.find(requestorId);
@@ -238,8 +237,7 @@ MemScheduler::findMemoryPort(PacketPtr pkt){
 void
 MemScheduler::processNextReqEvent(){
     std::unordered_map<RequestorID, std::queue<PacketPtr> >::iterator initialEntry = currentReadEntry;
-    MemSidePort* p;
-    bool enableSchedule = false;
+    MemSidePort* port;
     PacketPtr pkt;
     currentReadEntry++;
     if (currentReadEntry == readQueues.end()){
@@ -248,21 +246,21 @@ MemScheduler::processNextReqEvent(){
     while (true){
         if (!currentReadEntry->second.empty()){
             pkt = currentReadEntry->second.front();
-            p = findMemoryPort(pkt);
-            if (p->getHasBlockedEntry() == false){
-                p->sendPacket(pkt);
-                enableSchedule = true;
+            port = findMemoryPort(pkt);
+            if (port->getHasBlockedEntry() == false){
+                port->sendPacket(pkt);
+                currentReadEntry->second.pop();
                 break;
             }
             else{
                 if (initialEntry == currentReadEntry)
-                return;
+                    return;
             if (currentReadEntry != readQueues.end())
                 currentReadEntry++;
             if (currentReadEntry == readQueues.end())
                 currentReadEntry = readQueues.begin();
             }
-        } else if (currentReadEntry->second.empty()){
+        } else{
             if (initialEntry == currentReadEntry)
                 return;
             if (currentReadEntry != readQueues.end())
@@ -272,11 +270,14 @@ MemScheduler::processNextReqEvent(){
         }
     }
 
-    if (enableSchedule){
-        currentReadEntry->second.pop();
-        // TODO: Add the current frequency
-        schedule(nextReqEvent, curTick()+100);
-    }
+
+    schedule(nextReqEvent, curTick()+100);
+
+}
+
+void
+MemScheduler::processNextRespEvent(){
+    std::cout << "respQueueSize: " << respQueue.size() << std::endl;
 }
 
 bool
@@ -289,13 +290,18 @@ MemScheduler::handleResponse(PacketPtr pkt)
     // this object to continue to stall.
     // We need to free the resource before sending the packet in case the CPU
     // tries to send another request immediately (e.g., in the same callchain).
-    blocked = false;
+    if (respBlocked)
+        return false;
+    respQueue.push(pkt);
+    if (respQueue.size() == respBufferSize)
+        respBlocked = true;
     // Simply forward to the memory port
-    cpuPort.sendPacket(pkt);
-
+    // cpuPort.sendPacket(pkt);
+    if (!nextRespEvent.scheduled())
+        schedule(nextRespEvent, curTick());
     // For each of the cpu ports, if it needs to send a retry, it should do it
     // now since this memory object may be unblocked now.
-    cpuPort.trySendRetry();
+    // cpuPort.trySendRetry();
 
     return true;
 }

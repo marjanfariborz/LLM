@@ -232,12 +232,17 @@ class MemScheduler : public SimObject
     void processNextReqEvent();
     EventFunctionWrapper nextReqEvent;
 
+    void processNextRespEvent();
+    EventFunctionWrapper nextRespEvent;
+
+    MemSidePort* findMemoryPort(PacketPtr pkt);
+
     const uint32_t readBufferSize;
     const uint32_t writeBufferSize;
+    const uint32_t respBufferSize;
     const uint32_t numberPorts;
     const uint32_t numberQueues;
-    uint32_t queueIndex;
-    bool blocked;
+    bool respBlocked;
 
     // std::queue<PacketPtr> *readQueue;
     // std::queue<PacketPtr> *writeQueue;
@@ -250,8 +255,7 @@ class MemScheduler : public SimObject
     std::unordered_map<RequestorID, bool> readBlocked;
     std::unordered_map<RequestorID, bool> writeBlocked;
 
-    MemSidePort* findMemoryPort(PacketPtr pkt);
-
+    std::queue<PacketPtr> respQueue;
   public:
 
     /** constructor
