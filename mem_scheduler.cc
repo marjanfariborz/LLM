@@ -83,6 +83,7 @@ MemScheduler::CPUSidePort::sendPacket(PacketPtr pkt)
     // If we can't send the packet across the port, store it for later.
     if (!sendTimingResp(pkt)) {
         blockedPacket = pkt;
+        blocked = true;
     }
 }
 
@@ -101,6 +102,11 @@ MemScheduler::CPUSidePort::trySendRetry()
         DPRINTF(MemScheduler, "Sending retry req for %d\n", id);
         sendRetryReq();
     }
+}
+
+bool
+MemScheduler::CPUSidePort::getBlocked(){
+    return blocked;
 }
 
 void
@@ -236,9 +242,11 @@ MemScheduler::findMemoryPort(PacketPtr pkt){
 
 void
 MemScheduler::processNextReqEvent(){
-    std::unordered_map<RequestorID, std::queue<PacketPtr> >::iterator initialEntry = currentReadEntry;
+    std::unordered_map<RequestorID, std::queue<PacketPtr> >::iterator \
+                                        initialEntry = currentReadEntry;
     MemSidePort* port;
     PacketPtr pkt;
+
     currentReadEntry++;
     if (currentReadEntry == readQueues.end()){
             currentReadEntry = readQueues.begin();
@@ -270,14 +278,25 @@ MemScheduler::processNextReqEvent(){
         }
     }
 
-
-    schedule(nextReqEvent, curTick()+100);
-
+    // TODO: schedule next event based on clk_freq
+    schedule(nextReqEvent, curTick() + 100);
 }
 
 void
 MemScheduler::processNextRespEvent(){
-    std::cout << "respQueueSize: " << respQueue.size() << std::endl;
+
+    DPRINTF(MemScheduler, "Processing Response Event\n");
+
+    if (cpuPort.getBlocked())
+        return;
+
+    PacketPtr pkt;
+    pkt = respQueue.front();
+
+    cpuPort.sendPacket(pkt);
+    respQueue.pop();
+    if (!respQueue.empty())
+        schedule(nextRespEvent, curTick() + 100);
 }
 
 bool

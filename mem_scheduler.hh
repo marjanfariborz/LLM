@@ -62,6 +62,8 @@ class MemScheduler : public SimObject
         bool needRetry;
 
         /// If we tried to send a packet and it was blocked, store it here
+
+        bool blocked;
         PacketPtr blockedPacket;
 
       public:
@@ -70,7 +72,7 @@ class MemScheduler : public SimObject
          */
         CPUSidePort(const std::string& name, MemScheduler *owner) :
             ResponsePort(name, owner), owner(owner), needRetry(false),
-            blockedPacket(nullptr)
+            blocked(false), blockedPacket(nullptr)
         { }
 
         /**
@@ -95,6 +97,8 @@ class MemScheduler : public SimObject
          * from the MemScheduler whenever it is unblocked.
          */
         void trySendRetry();
+
+        bool getBlocked();
 
       protected:
         /**
