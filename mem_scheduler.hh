@@ -204,7 +204,7 @@ class MemScheduler : public SimObject
      * @return true if we can handle the response this cycle, false if the
      *         responder needs to retry later
      */
-    // bool handleResponse(PacketPtr pkt);
+    bool handleResponse(PacketPtr pkt);
 
     /**
      * Handle a packet functionally. Update the data on a write and get the
@@ -236,8 +236,8 @@ class MemScheduler : public SimObject
     void processNextReqEvent();
     EventFunctionWrapper nextReqEvent;
 
-    // void processNextRespEvent();
-    // EventFunctionWrapper nextRespEvent;
+    void processNextRespEvent();
+    EventFunctionWrapper nextRespEvent;
 
     MemSidePort* findMemoryPort(PacketPtr pkt);
 
