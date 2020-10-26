@@ -33,9 +33,9 @@
 
 MemScheduler::MemScheduler(MemSchedulerParams *params) :
     SimObject(params),
-    cpuPort(params->name + ".cpu_side", this),
+    // cpuPort(params->name + ".cpu_side", this),
     nextReqEvent([this]{ processNextReqEvent(); }, name()),
-    nextRespEvent([this]{ processNextRespEvent(); }, name()),
+    // nextRespEvent([this]{ processNextRespEvent(); }, name()),
     readBufferSize(params->read_buffer_size),
     writeBufferSize(params->write_buffer_size),
     respBufferSize(params->resp_buffer_size),
@@ -47,13 +47,16 @@ MemScheduler::MemScheduler(MemSchedulerParams *params) :
     panic_if(readBufferSize == 0, "readBufferSize should be non-zero");
     panic_if(writeBufferSize == 0, "writeBufferSize "
                                     "should be non-zero");
-
+    for (uint32_t i = 0; i < numberQueues; ++i){
+        CPUSidePort *port = new CPUSidePort(this->name() + ".cpu_side" +
+                                            std::to_string(i), this);
+        cpuPorts.push_back(port);
+    }
     for (uint32_t i = 0; i < numberPorts; ++i){
-        MemSidePort *port = new MemSidePort(".mem_side" +
+        MemSidePort *port = new MemSidePort(this->name() + ".mem_side" +
                                             std::to_string(i), this);
         memPorts.push_back(port);
     }
-
     currentReadEntry = readQueues.begin();
     currentWriteEntry = writeQueues.begin();
 }
@@ -66,7 +69,7 @@ MemScheduler::getPort(const std::string &if_name, PortID idx)
     if (if_name == "mem_side" && idx < memPorts.size()) {
         return *memPorts[idx];
     } else if (if_name == "cpu_side") {
-        return cpuPort;
+        return *cpuPorts[idx];
     } else {
         // pass it along to our super class
         return SimObject::getPort(if_name, idx);
@@ -120,7 +123,7 @@ bool
 MemScheduler::CPUSidePort::recvTimingReq(PacketPtr pkt)
 {
     // Just forward to the memobj.
-    if (!owner->handleRequest(pkt)) {
+    if (!owner->handleRequest(this, pkt)) {
         needRetry = true;
         return false;
     } else {
@@ -158,7 +161,8 @@ bool
 MemScheduler::MemSidePort::recvTimingResp(PacketPtr pkt)
 {
     // Just forward to the memobj.
-    return owner->handleResponse(pkt);
+    // return owner->handleResponse(pkt);
+    return true;
 }
 
 bool MemScheduler::MemSidePort::getHasBlockedEntry()
@@ -186,19 +190,23 @@ MemScheduler::MemSidePort::recvRangeChange()
 }
 
 bool
-MemScheduler::handleRequest(PacketPtr pkt)
+MemScheduler::handleRequest(CPUSidePort *port, PacketPtr pkt)
 {
     uint32_t requestorId = pkt->req->requestorId();
 
     panic_if(!(pkt->isRead() || pkt->isWrite()),
              "Should only see read and writes at memory controller\n");
 
+    std::unordered_map<RequestorID, CPUSidePort*>::const_iterator ret = retryTable.find(requestorId);
+    if (ret == retryTable.end())
+        retryTable[requestorId] = port;
+
     std::unordered_map<RequestorID, bool>::const_iterator rit = readBlocked.find(requestorId);
-    if(rit == readBlocked.end())
+    if (rit == readBlocked.end())
         readBlocked[requestorId] = false;
 
     std::unordered_map<RequestorID, bool>::const_iterator wit = writeBlocked.find(requestorId);
-    if(wit == writeBlocked.end())
+    if (wit == writeBlocked.end())
         writeBlocked[requestorId] = false;
 
     if (pkt->isRead() && readBlocked[requestorId])
@@ -258,6 +266,12 @@ MemScheduler::processNextReqEvent(){
             if (port->getHasBlockedEntry() == false){
                 port->sendPacket(pkt);
                 currentReadEntry->second.pop();
+                if(currentReadEntry->second.size() == readBufferSize - 1){
+                    RequestorID requestorId = currentReadEntry->first;
+                    DPRINTF(MemScheduler, "Sending retry to requestorId: %d\n", requestorId);
+                    CPUSidePort *port = retryTable[requestorId];
+                    port->trySendRetry();
+                }
                 break;
             }
             else{
@@ -279,51 +293,51 @@ MemScheduler::processNextReqEvent(){
     }
 
     // TODO: schedule next event based on clk_freq
-    schedule(nextReqEvent, curTick() + 100);
+    schedule(nextReqEvent, curTick() + 10000);
 }
 
-void
-MemScheduler::processNextRespEvent(){
+// void
+// MemScheduler::processNextRespEvent(){
 
-    DPRINTF(MemScheduler, "Processing Response Event\n");
+//     DPRINTF(MemScheduler, "Processing Response Event\n");
 
-    if (cpuPort.getBlocked())
-        return;
+//     if (cpuPort.getBlocked())
+//         return;
 
-    PacketPtr pkt;
-    pkt = respQueue.front();
+//     PacketPtr pkt;
+//     pkt = respQueue.front();
 
-    cpuPort.sendPacket(pkt);
-    respQueue.pop();
-    if (!respQueue.empty())
-        schedule(nextRespEvent, curTick() + 100);
-}
+//     cpuPort.sendPacket(pkt);
+//     respQueue.pop();
+//     if (!respQueue.empty())
+//         schedule(nextRespEvent, curTick() + 100);
+// }
 
-bool
-MemScheduler::handleResponse(PacketPtr pkt)
-{
+// bool
+// MemScheduler::handleResponse(PacketPtr pkt)
+// {
 
-    DPRINTF(MemScheduler, "Got response for addr %#x\n", pkt->getAddr());
+//     DPRINTF(MemScheduler, "Got response for addr %#x\n", pkt->getAddr());
 
-    // The packet is now done. We're about to put it in the port, no need for
-    // this object to continue to stall.
-    // We need to free the resource before sending the packet in case the CPU
-    // tries to send another request immediately (e.g., in the same callchain).
-    if (respBlocked)
-        return false;
-    respQueue.push(pkt);
-    if (respQueue.size() == respBufferSize)
-        respBlocked = true;
-    // Simply forward to the memory port
-    // cpuPort.sendPacket(pkt);
-    if (!nextRespEvent.scheduled())
-        schedule(nextRespEvent, curTick());
-    // For each of the cpu ports, if it needs to send a retry, it should do it
-    // now since this memory object may be unblocked now.
-    // cpuPort.trySendRetry();
+//     // The packet is now done. We're about to put it in the port, no need for
+//     // this object to continue to stall.
+//     // We need to free the resource before sending the packet in case the CPU
+//     // tries to send another request immediately (e.g., in the same callchain).
+//     if (respBlocked)
+//         return false;
+//     respQueue.push(pkt);
+//     if (respQueue.size() == respBufferSize)
+//         respBlocked = true;
+//     // Simply forward to the memory port
+//     // cpuPort.sendPacket(pkt);
+//     if (!nextRespEvent.scheduled())
+//         schedule(nextRespEvent, curTick());
+//     // For each of the cpu ports, if it needs to send a retry, it should do it
+//     // now since this memory object may be unblocked now.
+//     // cpuPort.trySendRetry();
 
-    return true;
-}
+//     return true;
+// }
 
 void
 MemScheduler::handleFunctional(PacketPtr pkt)
@@ -356,7 +370,8 @@ MemScheduler::getAddrRanges() const
 void
 MemScheduler::sendRangeChange()
 {
-    cpuPort.sendRangeChange();
+    for (auto cpuPort : cpuPorts)
+        cpuPort->sendRangeChange();
 }
 
 

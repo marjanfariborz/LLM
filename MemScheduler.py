@@ -32,7 +32,7 @@ class MemScheduler(SimObject):
     type = 'MemScheduler'
     cxx_header = "mem/mem_scheduler.hh"
 
-    cpu_side = ResponsePort("CPU side port, receives requests")
+    cpu_side = VectorResponsePort("CPU side port, receives requests")
     mem_side = VectorRequestPort("Ports on the memory "
                                         "controllers side")
     nbr_channels = Param.Int(8, "Number of channles this MemScheduler "

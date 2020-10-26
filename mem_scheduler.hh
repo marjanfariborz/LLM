@@ -195,7 +195,7 @@ class MemScheduler : public SimObject
      * @return true if we can handle the request this cycle, false if the
      *         requestor needs to retry later
      */
-    bool handleRequest(PacketPtr pkt);
+    bool handleRequest(CPUSidePort *port, PacketPtr pkt);
 
     /**
      * Handle the respone from the memory side
@@ -204,7 +204,7 @@ class MemScheduler : public SimObject
      * @return true if we can handle the response this cycle, false if the
      *         responder needs to retry later
      */
-    bool handleResponse(PacketPtr pkt);
+    // bool handleResponse(PacketPtr pkt);
 
     /**
      * Handle a packet functionally. Update the data on a write and get the
@@ -228,7 +228,7 @@ class MemScheduler : public SimObject
     void sendRangeChange();
 
     /// Instantiation of the CPU-side ports
-    CPUSidePort cpuPort;
+    std::vector<CPUSidePort*> cpuPorts;
 
     /// Instantiation of the memory-side port
     std::vector<MemSidePort*> memPorts;
@@ -236,8 +236,8 @@ class MemScheduler : public SimObject
     void processNextReqEvent();
     EventFunctionWrapper nextReqEvent;
 
-    void processNextRespEvent();
-    EventFunctionWrapper nextRespEvent;
+    // void processNextRespEvent();
+    // EventFunctionWrapper nextRespEvent;
 
     MemSidePort* findMemoryPort(PacketPtr pkt);
 
@@ -254,11 +254,10 @@ class MemScheduler : public SimObject
     std::unordered_map<RequestorID, std::queue<PacketPtr> >::iterator currentWriteEntry;
     std::unordered_map<RequestorID, std::queue<PacketPtr> > readQueues;
     std::unordered_map<RequestorID, std::queue<PacketPtr> > writeQueues;
-
     /// True if this is currently blocked waiting for a response.
     std::unordered_map<RequestorID, bool> readBlocked;
     std::unordered_map<RequestorID, bool> writeBlocked;
-
+    std::unordered_map<RequestorID, CPUSidePort*> retryTable;
     std::queue<PacketPtr> respQueue;
   public:
 
