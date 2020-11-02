@@ -73,7 +73,7 @@ class MemScheduler : public SimObject
         CPUSidePort(const std::string& name, MemScheduler *owner) :
             ResponsePort(name, owner), owner(owner), needRetry(false),
             blocked(false), blockedPacket(nullptr)
-        { }
+        {}
 
         /**
          * Send a packet across this port. This is called by the owner and
@@ -99,6 +99,10 @@ class MemScheduler : public SimObject
         void trySendRetry();
 
         bool getBlocked();
+
+        bool getNeedRetry();
+
+        PacketPtr getBlockedPkt();
 
       protected:
         /**
