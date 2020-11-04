@@ -35,6 +35,7 @@
 #include "mem/port.hh"
 #include "params/MemScheduler.hh"
 #include "sim/sim_object.hh"
+#include "sim/clocked_object.hh"
 
 /**
  * A very simple memory object. Current implementation doesn't even cache
@@ -147,16 +148,16 @@ class MemScheduler : public SimObject
       private:
         /// The object that owns this object (MemScheduler)
         MemScheduler *owner;
-        bool hasBlockedEntry;
+        bool blocked;
         /// If we tried to send a packet and it was blocked, store it here
-        std::unordered_map<RequestorID, std::queue<PacketPtr> >::iterator blockedQueueEntry;
+        PacketPtr blockedPacket;
 
       public:
         /**
          * Constructor. Just calls the superclass constructor.
          */
         MemSidePort(const std::string& name, MemScheduler *owner) :
-            RequestPort(name, owner), owner(owner), hasBlockedEntry(false)
+            RequestPort(name, owner), owner(owner), blocked(false), blockedPacket(nullptr)
         {}
 
         /**
@@ -167,7 +168,7 @@ class MemScheduler : public SimObject
          */
         void sendPacket(PacketPtr pkt);
 
-        bool getHasBlockedEntry(void);
+        bool getBlocked(void);
 
       protected:
         /**
@@ -231,6 +232,8 @@ class MemScheduler : public SimObject
      */
     void sendRangeChange();
 
+    void wakeUp();
+
     /// Instantiation of the CPU-side ports
     std::vector<CPUSidePort*> cpuPorts;
 
@@ -261,7 +264,7 @@ class MemScheduler : public SimObject
     /// True if this is currently blocked waiting for a response.
     std::unordered_map<RequestorID, bool> readBlocked;
     std::unordered_map<RequestorID, bool> writeBlocked;
-    std::unordered_map<RequestorID, CPUSidePort*> retryTable;
+    std::unordered_map<RequestorID, CPUSidePort*> routingTable;
     std::queue<PacketPtr> respQueue;
   public:
 
