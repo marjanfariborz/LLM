@@ -11,6 +11,9 @@ import math
 
 parser = argparse.ArgumentParser()
 
+parser.add_argument('mem_type', type = str,
+                    help = '''memory model to simulate''')
+
 parser.add_argument('num_chnls', type = int, default = 1,
                     help = 'number of channels in the memory system, \
                     could only be a power of 2, e.g. 1, 2, 4, 8, ..')
@@ -38,7 +41,7 @@ parser.add_argument('data_limit', type = int, default = 0)
 
 options = parser.parse_args()
 
-system = TestBenchSystem(options.num_chnls, options.num_tgens)
+system = TestBenchSystem(options.mem_type, options.num_chnls, options.num_tgens)
 
 options.block_size = 64
 options.duration = int(toLatency(options.duration) * 1e12)
@@ -62,11 +65,11 @@ if options.mode == 'LINEAR':
         # options.max_period = int(options.max_period * math.sqrt(i) / 1.3)
         tgen.start(createLinearTraffic(tgen, options))
 elif options.mode == 'RANDOM':
-    i = 0
+    # i = 0
     for tgen in system.tgens:
-        i = i + 1
-        options.min_period = int(options.min_period * math.sqrt(i) / 1.3)
-        options.max_period = int(options.max_period * math.sqrt(i) / 1.3)
+        # i = i + 1
+        # options.min_period = int(options.min_period * math.sqrt(i) / 1.3)
+        # options.max_period = int(options.max_period * math.sqrt(i) / 1.3)
         tgen.start(createRandomTraffic(tgen, options))
 else:
     print('Traffic type not supported!')
