@@ -100,7 +100,7 @@ class TestBenchSystem(System):
 
         if self._mem_type == LLM2:
             self.membuses = [SystemXBar(width = 64, max_routing_table_size = 16777216) for i in range(self._num_tgens)]
-            self.scheds = [MemScheduler(resp_buffer_size = 64) for i in range(self._num_chnls)]
+            self.scheds = [MemScheduler(resp_buffer_size = 64, unified_queue = False) for i in range(self._num_chnls)]
 
             for i, tgen in enumerate(self.tgens):
                 tgen.port = self.membuses[i].cpu_side_ports
