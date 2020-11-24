@@ -9,12 +9,14 @@ import math
 
 class TestBenchSystem(System):
 
-    def __init__(self, mem_type, num_chnls, num_tgens):
+    def __init__(self, mem_type, num_chnls, unified_queue, wr_perc, num_tgens):
         super(TestBenchSystem, self).__init__()
         if mem_type == 'LLM':
             self._mem_type = LLM2
             self._addr_mapping = 'RoRaBaCoCh'
             self._page_policy = 'open'
+            self._unified_queue = unified_queue
+            self._wr_perc = wr_perc
         elif mem_type == 'HBM':
             self._mem_type = HBM_1000_4H_1x128
             self._addr_mapping = HBM_1000_4H_1x128.addr_mapping
@@ -94,13 +96,16 @@ class TestBenchSystem(System):
             ctrl.dram.page_policy = page_policy
 
             mem_ctrls.append(ctrl)
+            if self._mem_type == LLM2:
+                ctrl.dram.read_buffer_size = 32
 
         self.mem_ctrls = mem_ctrls
     def connectComponents(self):
 
         if self._mem_type == LLM2:
             self.membuses = [SystemXBar(width = 64, max_routing_table_size = 16777216) for i in range(self._num_tgens)]
-            self.scheds = [MemScheduler(resp_buffer_size = 64, unified_queue = False) for i in range(self._num_chnls)]
+            self.scheds = [MemScheduler(resp_buffer_size = 64, unified_queue = self._unified_queue, \
+                            service_write_threshold = self._wr_perc, read_buffer_size = 8) for i in range(self._num_chnls)]
 
             for i, tgen in enumerate(self.tgens):
                 tgen.port = self.membuses[i].cpu_side_ports
