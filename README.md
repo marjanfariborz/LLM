@@ -22,6 +22,7 @@ gem5/build/NULL/gem5.opt  configs-test-llm/run_llm_eval.py (mem_type: LLM, HBM) 
 - [ ] Add more params to the run and config script (e.g. write max threshold)
 - [ ] Packet queue limit beyond 128 (talk to Jason about this)
 - [ ] Service read requests to on the fly write requests
+- [ ] Associative search on each queue
 
 ## TESTS:
 * Stress tests:

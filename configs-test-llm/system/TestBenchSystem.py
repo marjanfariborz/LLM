@@ -9,24 +9,24 @@ import math
 
 class TestBenchSystem(System):
 
-    def __init__(self, mem_type, num_chnls, unified_queue, wr_perc, num_tgens):
+    def __init__(self, options):
         super(TestBenchSystem, self).__init__()
-        if mem_type == 'LLM':
+        if options.mem_type == 'LLM':
             self._mem_type = LLM2
             self._addr_mapping = 'RoRaBaCoCh'
-            self._page_policy = 'open'
-            self._unified_queue = unified_queue
-            self._wr_perc = wr_perc
-        elif mem_type == 'HBM':
+            self._paging_policy = options.paging_policy
+            self._unified_queue = options.unified_queue
+            self._wr_perc = options.wr_perc
+        elif options.mem_type == 'HBM':
             self._mem_type = HBM_1000_4H_1x128
             self._addr_mapping = HBM_1000_4H_1x128.addr_mapping
             self._page_policy = HBM_1000_4H_1x128.page_policy
         else:
             fatal('Memory type not supported.')
-        self._num_chnls = num_chnls
-        self._num_tgens = num_tgens
+        self._num_chnls = options.num_chnls
+        self._num_tgens = options.num_tgens
 
-        self._mem_size = str(512 * num_chnls) + 'MB'
+        self._mem_size = str(512 * options.num_chnls) + 'MB'
         self._addr_range = AddrRange(self._mem_size)
 
         self.clk_domain = SrcClockDomain()
@@ -64,7 +64,7 @@ class TestBenchSystem(System):
         cls = self._mem_type
         addr_range = self._addr_range
         addr_map = self._addr_mapping
-        page_policy = self._page_policy
+        page_policy = self._paging_policy
         if self._mem_type == LLM2:
             num_chnls = self._num_chnls * 8
         elif self._mem_type == HBM_1000_4H_1x128:
@@ -98,6 +98,7 @@ class TestBenchSystem(System):
             mem_ctrls.append(ctrl)
             if self._mem_type == LLM2:
                 ctrl.dram.read_buffer_size = 32
+                ctrl.dram.page_policy = page_policy
 
         self.mem_ctrls = mem_ctrls
     def connectComponents(self):

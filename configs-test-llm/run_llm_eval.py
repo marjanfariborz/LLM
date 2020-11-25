@@ -20,9 +20,13 @@ parser.add_argument('num_chnls', type = int, default = 1,
 
 parser.add_argument('unified_queue', type = int, default = False,
                     help = 'Unified queue at the MemScheduler')
+
 parser.add_argument('wr_perc', type = int,
                     help = '''Percentage of write request
                     to force servicing writes in MemScheduler''')
+
+parser.add_argument('paging_policy', type = str,
+                    help = '''paging policy''')
 
 parser.add_argument('num_tgens', type = int, default = 1,
                     help = 'number of traffic generators to create \
@@ -47,7 +51,7 @@ parser.add_argument('data_limit', type = int, default = 0)
 
 options = parser.parse_args()
 
-system = TestBenchSystem(options.mem_type, options.num_chnls, options.unified_queue, options.wr_perc, options.num_tgens)
+system = TestBenchSystem(options)
 options.block_size = 64
 options.duration = int(toLatency(options.duration) * 1e12)
 options.min_addr = 0
