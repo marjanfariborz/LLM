@@ -24,7 +24,7 @@ gem5/build/NULL/gem5.opt  configs-test-llm/run_llm_eval.py (mem_type: LLM, HBM) 
 - [ ] Packet queue limit beyond 128 (talk to Jason about this)
 - [ ] Service read requests to on the fly write requests
 - [ ] Associative search on each queue
-- [ ] ``gem5/build/NULL/gem5.opt -re --debug-flags=MemScheduler configs-test-llm/run_llm_eval.py LLM 16 0 60 close 16 LINEAR 1us 105 100 0```
+- [ ] Fix segfault: gem5/build/NULL/gem5.opt -re --debug-flags=MemScheduler configs-test-llm/run_llm_eval.py LLM 16 0 60 close 16 LINEAR 1us 105 100 0
 
 ## TESTS:
 * Stress tests:
