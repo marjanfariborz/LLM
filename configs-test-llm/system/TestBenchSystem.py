@@ -20,7 +20,7 @@ class TestBenchSystem(System):
         elif options.mem_type == 'HBM':
             self._mem_type = HBM_1000_4H_1x128
             self._addr_mapping = HBM_1000_4H_1x128.addr_mapping
-            self._page_policy = HBM_1000_4H_1x128.page_policy
+            self._paging_policy = HBM_1000_4H_1x128.page_policy
         else:
             fatal('Memory type not supported.')
         self._num_chnls = options.num_chnls
@@ -88,6 +88,9 @@ class TestBenchSystem(System):
                         intlvBits = intlv_bits,
                         intlvMatch = chnl)
 
+            interface.read_buffer_size = 8
+            interface.write_buffer_size = 16
+
             ctrl = MemCtrl()
             ctrl.dram = interface
 
@@ -105,8 +108,8 @@ class TestBenchSystem(System):
 
         if self._mem_type == LLM2:
             self.membuses = [SystemXBar(width = 64, max_routing_table_size = 16777216) for i in range(self._num_tgens)]
-            self.scheds = [MemScheduler(resp_buffer_size = 64, unified_queue = self._unified_queue, \
-                            service_write_threshold = self._wr_perc, read_buffer_size = 8) for i in range(self._num_chnls)]
+            self.scheds = [MemScheduler(read_buffer_size = 32, write_buffer_size = 32, resp_buffer_size = 64, unified_queue = self._unified_queue, \
+                            service_write_threshold = self._wr_perc) for i in range(self._num_chnls)]
 
             for i, tgen in enumerate(self.tgens):
                 tgen.port = self.membuses[i].cpu_side_ports
