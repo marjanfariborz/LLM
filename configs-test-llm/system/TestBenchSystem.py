@@ -17,10 +17,12 @@ class TestBenchSystem(System):
             self._paging_policy = options.paging_policy
             self._unified_queue = options.unified_queue
             self._wr_perc = options.wr_perc
+            self._page_size = options.paging_size
+            self._banks_per_channel = options.banks_per_channel
         elif options.mem_type == 'HBM':
             self._mem_type = HBM_1000_4H_1x128
             self._addr_mapping = HBM_1000_4H_1x128.addr_mapping
-            self._page_policy = HBM_1000_4H_1x128.page_policy
+            self._paging_policy = HBM_1000_4H_1x128.page_policy
         else:
             fatal('Memory type not supported.')
         self._num_chnls = options.num_chnls
@@ -60,13 +62,13 @@ class TestBenchSystem(System):
 
     def createMemoryCtrl(self):
         mem_ctrls = []
-
+        banks = self._banks_per_channel
         cls = self._mem_type
         addr_range = self._addr_range
         addr_map = self._addr_mapping
         page_policy = self._paging_policy
         if self._mem_type == LLM2:
-            num_chnls = self._num_chnls * 8
+            num_chnls = self._num_chnls * banks
         elif self._mem_type == HBM_1000_4H_1x128:
             num_chnls = self._num_chnls
         else:
@@ -99,10 +101,11 @@ class TestBenchSystem(System):
             if self._mem_type == LLM2:
                 ctrl.dram.read_buffer_size = 32
                 ctrl.dram.page_policy = page_policy
+                ctrl.dram.device_rowbuffer_size = self._page_size
 
         self.mem_ctrls = mem_ctrls
     def connectComponents(self):
-
+        banks = self._banks_per_channel
         if self._mem_type == LLM2:
             self.membuses = [SystemXBar(width = 64, max_routing_table_size = 16777216) for i in range(self._num_tgens)]
             self.scheds = [MemScheduler(resp_buffer_size = 64, unified_queue = self._unified_queue, \
@@ -116,8 +119,8 @@ class TestBenchSystem(System):
                     sched.cpu_side[i] = membus.mem_side_ports
 
             for i in range(self._num_chnls):
-                for j in range(i * 8, (i + 1) * 8):
-                    self.scheds[i].mem_side[j - i * 8] = self.mem_ctrls[j].port
+                for j in range(i * banks, (i + 1) * banks):
+                    self.scheds[i].mem_side[j - i * banks] = self.mem_ctrls[j].port
             self.system_port = self.membuses[0].cpu_side_ports
         elif self._mem_type == HBM_1000_4H_1x128:
             self.membuses = SystemXBar(width = 64, max_routing_table_size = 16777216)

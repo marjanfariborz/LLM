@@ -28,9 +28,15 @@ parser.add_argument('wr_perc', type = int,
 parser.add_argument('paging_policy', type = str,
                     help = '''paging policy''')
 
+parser.add_argument('paging_size', type = str,
+                    help = '''Row buffer size''')
+
 parser.add_argument('num_tgens', type = int, default = 1,
                     help = 'number of traffic generators to create \
                         synthetic traffic')
+
+parser.add_argument('banks_per_channel', type = int, default = 8,
+                    help = 'number of banks connected to each channel')
 
 parser.add_argument('mode', type = str,
                     help = 'type of traffic to be generated')
