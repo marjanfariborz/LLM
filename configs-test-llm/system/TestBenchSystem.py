@@ -17,6 +17,7 @@ class TestBenchSystem(System):
             self._paging_policy = options.paging_policy
             self._unified_queue = options.unified_queue
             self._wr_perc = options.wr_perc
+            self._bank_per_channel = 32
         elif options.mem_type == 'HBM':
             self._mem_type = HBM_1000_4H_1x128
             self._addr_mapping = HBM_1000_4H_1x128.addr_mapping
@@ -60,13 +61,13 @@ class TestBenchSystem(System):
 
     def createMemoryCtrl(self):
         mem_ctrls = []
-
+        bpc = self._bank_per_channel
         cls = self._mem_type
         addr_range = self._addr_range
         addr_map = self._addr_mapping
         page_policy = self._paging_policy
         if self._mem_type == LLM2:
-            num_chnls = self._num_chnls * 8
+            num_chnls = self._num_chnls * bpc
         elif self._mem_type == HBM_1000_4H_1x128:
             num_chnls = self._num_chnls
         else:
@@ -111,6 +112,7 @@ class TestBenchSystem(System):
             self.scheds = [MemScheduler(read_buffer_size = 32, write_buffer_size = 32, resp_buffer_size = 64, unified_queue = self._unified_queue, \
                             service_write_threshold = self._wr_perc) for i in range(self._num_chnls)]
 
+            bpc = self._bank_per_channel
             for i, tgen in enumerate(self.tgens):
                 tgen.port = self.membuses[i].cpu_side_ports
 
@@ -119,8 +121,9 @@ class TestBenchSystem(System):
                     sched.cpu_side[i] = membus.mem_side_ports
 
             for i in range(self._num_chnls):
-                for j in range(i * 8, (i + 1) * 8):
-                    self.scheds[i].mem_side[j - i * 8] = self.mem_ctrls[j].port
+                for j in range(i * bpc, (i + 1) * bpc):
+                    self.scheds[i].mem_side[j -  i * bpc] = self.mem_ctrls[j].port
+
             self.system_port = self.membuses[0].cpu_side_ports
         elif self._mem_type == HBM_1000_4H_1x128:
             self.membuses = SystemXBar(width = 64, max_routing_table_size = 16777216)

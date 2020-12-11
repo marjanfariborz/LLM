@@ -57,8 +57,9 @@ options.duration = int(toLatency(options.duration) * 1e12)
 options.min_addr = 0
 options.max_addr = toMemorySize(str(512 * options.num_chnls) + 'MB')
 
-injection_period = int((1e12 * options.block_size) /
-                    (options.injection_rate * 1073741824))
+# injection_period = int((1e12 * options.block_size) /
+#                     (options.injection_rate * 1073741824))
+injection_period = 500
 options.min_period = injection_period
 options.max_period = injection_period
 
