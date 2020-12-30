@@ -81,6 +81,7 @@ class TestBenchSystem(System):
         else:
             intlv_low_bit = int(math.log(intlv_size, 2))
         intlv_bits = intlv_bits = int(math.log(num_chnls, 2))
+
         for chnl in range(num_chnls):
             interface = cls()
             interface.range = AddrRange(addr_range.start, size = addr_range.size(),
@@ -89,7 +90,7 @@ class TestBenchSystem(System):
                         intlvBits = intlv_bits,
                         intlvMatch = chnl)
 
-            interface.read_buffer_size = 8
+            interface.read_buffer_size = 1
             interface.write_buffer_size = 16
 
             ctrl = MemCtrl()
@@ -109,7 +110,7 @@ class TestBenchSystem(System):
 
         if self._mem_type == LLM2:
             self.membuses = [SystemXBar(width = 64, max_routing_table_size = 16777216) for i in range(self._num_tgens)]
-            self.scheds = [MemScheduler(read_buffer_size = 32, write_buffer_size = 32, resp_buffer_size = 64, unified_queue = self._unified_queue, \
+            self.scheds = [MemScheduler(read_buffer_size = 1, write_buffer_size = 32, resp_buffer_size = 64, unified_queue = self._unified_queue, \
                             service_write_threshold = self._wr_perc) for i in range(self._num_chnls)]
 
             bpc = self._bank_per_channel
