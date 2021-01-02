@@ -57,9 +57,8 @@ options.duration = int(toLatency(options.duration) * 1e12)
 options.min_addr = 0
 options.max_addr = toMemorySize(str(512 * options.num_chnls) + 'MB')
 
-# injection_period = int((1e12 * options.block_size) /
-#                     (options.injection_rate * 1073741824))
-injection_period = 500
+injection_period = int((1e12 * options.block_size) /
+                    (options.injection_rate * 1073741824))
 options.min_period = injection_period
 options.max_period = injection_period
 
@@ -68,18 +67,14 @@ root = Root(full_system = False, system = system)
 m5.instantiate()
 
 if options.mode == 'LINEAR':
-    # i = 0
-    for tgen in system.tgens:
-        # i = i + 1
-        # options.min_period = int(options.min_period * math.sqrt(i) / 1.3)
-        # options.max_period = int(options.max_period * math.sqrt(i) / 1.3)
+    for i, tgen in enumerate(system.tgens):
+        options.min_addr = i * 64
         tgen.start(createLinearTraffic(tgen, options))
+# elif options.mode == 'LINEAR':
+#     for tgen in system.tgens:
+#         tgen.start(createLinearTraffic(tgen, options))
 elif options.mode == 'RANDOM':
-    # i = 0
     for tgen in system.tgens:
-        # i = i + 1
-        # options.min_period = int(options.min_period * math.sqrt(i) / 1.3)
-        # options.max_period = int(options.max_period * math.sqrt(i) / 1.3)
         tgen.start(createRandomTraffic(tgen, options))
 else:
     print('Traffic type not supported!')

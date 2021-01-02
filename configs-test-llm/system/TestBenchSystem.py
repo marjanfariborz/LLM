@@ -102,7 +102,7 @@ class TestBenchSystem(System):
 
             mem_ctrls.append(ctrl)
             if self._mem_type == LLM2:
-                ctrl.dram.read_buffer_size = 32
+                ctrl.dram.read_buffer_size = 1
                 ctrl.dram.page_policy = page_policy
 
         self.mem_ctrls = mem_ctrls
