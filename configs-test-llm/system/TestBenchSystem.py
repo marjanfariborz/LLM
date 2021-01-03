@@ -13,7 +13,7 @@ class TestBenchSystem(System):
         super(TestBenchSystem, self).__init__()
         if options.mem_type == 'LLM':
             self._mem_type = LLM2
-            self._addr_mapping = 'RoRaBaCoCh'
+            self._addr_mapping = 'RoCoRaBaCh'
             self._paging_policy = options.paging_policy
             self._unified_queue = options.unified_queue
             self._wr_perc = options.wr_perc
@@ -102,7 +102,7 @@ class TestBenchSystem(System):
 
             mem_ctrls.append(ctrl)
             if self._mem_type == LLM2:
-                ctrl.dram.read_buffer_size = 1
+                ctrl.dram.read_buffer_size = 2
                 ctrl.dram.page_policy = page_policy
 
         self.mem_ctrls = mem_ctrls
