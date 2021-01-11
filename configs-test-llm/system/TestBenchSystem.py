@@ -61,12 +61,13 @@ class TestBenchSystem(System):
 
     def createMemoryCtrl(self):
         mem_ctrls = []
-        bpc = self._bank_per_channel
+        bpc = 0
         cls = self._mem_type
         addr_range = self._addr_range
         addr_map = self._addr_mapping
         page_policy = self._paging_policy
         if self._mem_type == LLM2:
+            bpc = self._bank_per_channel
             num_chnls = self._num_chnls * bpc
         elif self._mem_type == HBM_1000_4H_1x128:
             num_chnls = self._num_chnls
@@ -90,8 +91,8 @@ class TestBenchSystem(System):
                         intlvBits = intlv_bits,
                         intlvMatch = chnl)
 
-            interface.read_buffer_size = 1
-            interface.write_buffer_size = 16
+            # interface.read_buffer_size = 32
+            # interface.write_buffer_size = 16
 
             ctrl = MemCtrl()
             ctrl.dram = interface
@@ -121,9 +122,13 @@ class TestBenchSystem(System):
                 for sched in self.scheds:
                     sched.cpu_side[i] = membus.mem_side_ports
 
-            for i in range(self._num_chnls):
-                for j in range(i * bpc, (i + 1) * bpc):
-                    self.scheds[i].mem_side[j -  i * bpc] = self.mem_ctrls[j].port
+            # for i in range(self._num_chnls):
+            #     for j in range(i * bpc, (i + 1) * bpc):
+            #         self.scheds[i].mem_side[j -  i * bpc] = self.mem_ctrls[j].port
+            
+            for i, mem_ctrl in enumerate(self.mem_ctrls):
+                self.scheds[i % self._num_chnls].mem_side = mem_ctrl.port
+
 
             self.system_port = self.membuses[0].cpu_side_ports
         elif self._mem_type == HBM_1000_4H_1x128:
