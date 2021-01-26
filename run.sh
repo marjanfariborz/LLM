@@ -1,9 +1,10 @@
 #/bin/bash
-
-for BW in $(seq 5 10 300)
-    do for paging in open close close_adaptive
+rm -rf results/
+for BW in `seq 1 1 20`
+    do for traffic in LINEAR RANDOM
         do
-        gem5/build/NULL/gem5.opt --outdir=results/LINEAR/LLM_$paging/BW_$BW -re configs-test-llm/run_llm_eval.py LLM 1 0 60 $paging 1 LINEAR 1us $BW 100 0
+        gem5/build/NULL/gem5.opt --outdir=results/LLM_32/$traffic/BW_$BW -re configs-test-llm/run_llm_eval.py LLM 2 32 0 60 close 16 $traffic 10us $BW 100 0 &
+        gem5/build/NULL/gem5.opt --outdir=results/LLM_64/$traffic/BW_$BW -re configs-test-llm/run_llm_eval.py LLM 2 64 0 60 close 16 $traffic 10us $BW 100 0 &
+        gem5/build/NULL/gem5.opt --outdir=results/HBM/$traffic/BW_$BW -re configs-test-llm/run_llm_eval.py HBM 8 0 0 60 open 16 $traffic 10us $BW 100 0 &
     done
-    gem5/build/NULL/gem5.opt --outdir=results/LINEAR/HBM/BW_$BW -re configs-test-llm/run_llm_eval.py HBM 1 0 60 open 1 LINEAR 1us $BW 100 0
 done

@@ -17,7 +17,7 @@ class TestBenchSystem(System):
             self._paging_policy = options.paging_policy
             self._unified_queue = options.unified_queue
             self._wr_perc = options.wr_perc
-            self._bank_per_channel = 32
+            self._bank_per_channel = options.banks_per_channel
         elif options.mem_type == 'HBM':
             self._mem_type = HBM_1000_4H_1x128
             self._addr_mapping = HBM_1000_4H_1x128.addr_mapping
@@ -90,7 +90,7 @@ class TestBenchSystem(System):
                         xorHighBit = 0,
                         intlvBits = intlv_bits,
                         intlvMatch = chnl)
-
+            
             # interface.read_buffer_size = 32
             # interface.write_buffer_size = 16
 
@@ -103,6 +103,7 @@ class TestBenchSystem(System):
 
             mem_ctrls.append(ctrl)
             if self._mem_type == LLM2:
+                interface.device_size = str(int(512 / bpc)) + 'MB'
                 ctrl.dram.read_buffer_size = 2
                 ctrl.dram.page_policy = page_policy
 

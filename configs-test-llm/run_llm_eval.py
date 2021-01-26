@@ -1,5 +1,6 @@
 from m5.util.convert import *
 from m5.util import addToPath
+import m5.pystats.loader as loader
 addToPath('system')
 addToPath('../gem5/configs')
 
@@ -8,6 +9,7 @@ from TrafficGen import *
 
 import argparse
 import math
+
 
 parser = argparse.ArgumentParser()
 
@@ -18,6 +20,9 @@ parser.add_argument('num_chnls', type = int, default = 1,
                     help = 'number of channels in the memory system, \
                     could only be a power of 2, e.g. 1, 2, 4, 8, ..')
 
+parser.add_argument('banks_per_channel', type = int, default = 32,
+                    help = 'number of banks per LLM channel')
+                    
 parser.add_argument('unified_queue', type = int, default = False,
                     help = 'Unified queue at the MemScheduler')
 
@@ -64,6 +69,7 @@ options.max_period = injection_period
 
 root = Root(full_system = False, system = system)
 
+
 m5.instantiate()
 
 if options.mode == 'LINEAR':
@@ -80,3 +86,6 @@ else:
     print('Traffic type not supported!')
 
 exit_event = m5.simulate()
+simstat = loader.get_simstat(root)
+with open('test.json', 'w') as f:
+    simstat.dump(f)
