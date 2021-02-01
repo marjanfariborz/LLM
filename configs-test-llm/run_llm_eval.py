@@ -1,6 +1,6 @@
 from m5.util.convert import *
 from m5.util import addToPath
-import m5.pystats.loader as loader
+# import m5.pystats.loader as loader
 addToPath('system')
 addToPath('../gem5/configs')
 
@@ -86,6 +86,6 @@ else:
     print('Traffic type not supported!')
 
 exit_event = m5.simulate()
-simstat = loader.get_simstat(root)
-with open('test.json', 'w') as f:
-    simstat.dump(f)
+# simstat = loader.get_simstat(root)
+# with open('test.json', 'w') as f:
+#     simstat.dump(f)

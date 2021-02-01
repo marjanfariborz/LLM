@@ -105,7 +105,13 @@ class TestBenchSystem(System):
             if self._mem_type == LLM2:
                 interface.device_size = str(int(512 / bpc)) + 'MB'
                 ctrl.dram.read_buffer_size = 2
+                ctrl.dram.write_buffer_size = 8
                 ctrl.dram.page_policy = page_policy
+                ctrl.write_high_thresh_perc = 100 
+                ctrl.write_low_thresh_perc = 90
+                ctrl.min_writes_per_switch = 1
+                ctrl.mem_sched_policy = 'fcfs'
+
 
         self.mem_ctrls = mem_ctrls
     def connectComponents(self):
