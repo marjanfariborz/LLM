@@ -77,6 +77,9 @@ class MyRubySystem(System):
         elif mem_sys == 'MESI_Two_Level':
             from .MESI_Two_Level import MESITwoLevelCache
             self.caches = MESITwoLevelCache()
+        elif mem_sys == 'MOESI_hammer':
+            from .MOESI_hammer import MOESIHammerCache
+            self.caches = MOESIHammerCache()
 
         self.caches.setup(self, self.cpu, self.mem_ctrls, self.mem_scheds,
                           [self.pc.south_bridge.ide.dma,

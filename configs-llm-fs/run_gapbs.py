@@ -96,7 +96,7 @@ if __name__ == "__m5_main__":
 
     if (mem_sys == "classic"):
         system = MySystem(kernel, disk, cpu_type, num_cpus)
-    elif (mem_sys == "MI_example" or "MESI_Two_Level"):
+    elif (mem_sys == "MI_example" or "MESI_Two_Level" or "MOESI_Hammer"):
         system = MyRubySystem(kernel, disk, mem_sys, num_cpus, num_chnls)
 
     # For workitems to work correctly
