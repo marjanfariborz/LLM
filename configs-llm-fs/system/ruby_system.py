@@ -30,21 +30,22 @@
 import m5
 from m5.objects import *
 from m5.util import convert
-from fs_tools import *
-
+from .fs_tools import *
+import math
 class MyRubySystem(System):
 
-    def __init__(self, kernel, disk, cpu_type, mem_sys, num_cpus):
+    def __init__(self, kernel, disk, mem_sys, num_cpus, num_chnls):
         super(MyRubySystem, self).__init__()
 
-        self._host_parallel = cpu_type == "kvm"
-
+        # self._host_parallel = cpu_type == "kvm"
+        self._num_channels = num_chnls
+        self._bpc = 64
         # Set up the clock domain and the voltage domain
         self.clk_domain = SrcClockDomain()
         self.clk_domain.clock = '3GHz'
         self.clk_domain.voltage_domain = VoltageDomain()
-
-        self.mem_ranges = [AddrRange(Addr('3GB')), # All data
+        self._mem_size = str(256 * self._num_channels) + 'MB'
+        self.mem_ranges = [AddrRange(Addr('1GB')), # All data
                            AddrRange(0xC0000000, size=0x100000), # For I/0
                            ]
 
@@ -64,68 +65,95 @@ class MyRubySystem(System):
         self.workload.command_line = ' '.join(boot_options)
 
         # Create the CPUs for our system.
-        self.createCPU(cpu_type, num_cpus)
+        self.createCPU(num_cpus)
 
         self.createMemoryControllersDDR3()
 
         # Create the cache hierarchy for the system.
 
         if mem_sys == 'MI_example':
-            from MI_example_caches import MIExampleSystem
+            from .MI_example_caches import MIExampleSystem
             self.caches = MIExampleSystem()
         elif mem_sys == 'MESI_Two_Level':
-            from MESI_Two_Level import MESITwoLevelCache
+            from .MESI_Two_Level import MESITwoLevelCache
             self.caches = MESITwoLevelCache()
 
-        self.caches.setup(self, self.cpu, self.mem_cntrls,
-                          [self.pc.south_bridge.ide.dma, self.iobus.master],
-                          self.iobus)
+        self.caches.setup(self, self.cpu, self.mem_ctrls, self.mem_scheds,
+                          [self.pc.south_bridge.ide.dma,
+                           self.iobus.mem_side_ports],
+                          self.iobus, self._bpc)
 
-        if self._host_parallel:
-            # To get the KVM CPUs to run on different host CPUs
-            # Specify a different event queue for each CPU
-            for i,cpu in enumerate(self.cpu):
-                for obj in cpu.descendants():
-                    obj.eventq_index = 0
-                cpu.eventq_index = i + 1
-
-    def getHostParallel(self):
-        return self._host_parallel
+        # if self._host_parallel:
+        #     # To get the KVM CPUs to run on different host CPUs
+        #     # Specify a different event queue for each CPU
+        #     for i,cpu in enumerate(self.cpu):
+        #         for obj in cpu.descendants():
+        #             obj.eventq_index = 0
+        #         cpu.eventq_index = i + 1
+    # def getHostParallel(self):
+    #     return self._host_parallel
 
     def totalInsts(self):
         return sum([cpu.totalInsts() for cpu in self.cpu])
 
-    def createCPU(self, cpu_type, num_cpus):
-        self.cpu = [X86KvmCPU(cpu_id = i)
-                        for i in range(num_cpus)]
+    def createEventQueues(self, cpuList):
+        for i, cpu in enumerate(cpuList):
+            for obj in cpu.descendants():
+                obj.eventq_index = 0
+            cpu.eventq_index = i + 1
+
+    def createCPUThreads(self, cpu):
+        for c in cpu:
+            c.createThreads()
+
+    def createCPU(self, num_cpus):
+        self.cpu = [X86KvmCPU(cpu_id = i) for i in range(num_cpus)]
+        self.createCPUThreads(self.cpu)
+        self.setupInterrupts()
+        self.createEventQueues(self.cpu)
         self.kvm_vm = KvmVM()
         self.mem_mode = 'atomic_noncaching'
-        if cpu_type == "atomic":
-            self.timingCpu = [AtomicSimpleCPU(cpu_id = i,
-                                        switched_out = True)
-                              for i in range(num_cpus)]
-            map(lambda c: c.createThreads(), self.timingCpu)
-        elif cpu_type == "o3":
-            self.timingCpu = [DerivO3CPU(cpu_id = i,
-                                        switched_out = True)
-                        for i in range(num_cpus)]
-            map(lambda c: c.createThreads(), self.timingCpu)
-        elif cpu_type == "simple":
-            self.timingCpu = [TimingSimpleCPU(cpu_id = i,
-                                        switched_out = True)
-                        for i in range(num_cpus)]
-            map(lambda c: c.createThreads(), self.timingCpu)
-        elif cpu_type == "kvm":
-            pass
-        else:
-            m5.fatal("No CPU type {}".format(cpu_type))
 
-        map(lambda c: c.createThreads(), self.cpu)
-        map(lambda c: c.createInterruptController(), self.cpu)
+        # self.atomicCpu = [AtomicSimpleCPU(cpu_id = i, switched_out = True)
+        #                 for i in range(num_cpus)]
+        # self.createCPUThreads(self.atomicCpu)
+
+        self.timingCpu = [TimingSimpleCPU(cpu_id = i, switched_out = True)
+                        for i in range(num_cpus)]
+        self.createCPUThreads(self.timingCpu)
+
+        self.detailedCpu = [DerivO3CPU(cpu_id = i, switched_out = True)
+                        for i in range(num_cpus)]
+        self.createCPUThreads(self.detailedCpu)
 
     def switchCpus(self, old, new):
         assert(new[0].switchedOut())
-        m5.switchCpus(self, zip(old, new))
+        m5.switchCpus(self, list(zip(old, new)))
+
+    def switchToAtomic(self):
+        self.switchCpus(self.cpu, self.atomicCpu)
+    def switchFromAtomic(self):
+        self.switchCpus(self.atomicCpu, self.cpu)
+
+    def switchToTiming(self):
+        self.mem_mode = 'timing'
+        self.switchCpus(self.cpu, self.timingCpu)
+    def switchFromTiming(self):
+        self.switchCpus(self.timingCpu, self.cpu)
+
+    def switchToDetailed(self):
+        self.switchCpus(self.cpu, self.detailedCpu)
+    def switchFromDetailed(self):
+        self.switchCpus(self.detailedCpu, self.cpu)
+
+    def switchCpus(self, old, new):
+        assert(new[0].switchedOut())
+        m5.switchCpus(self, list(zip(old, new)))
+
+    def setupInterrupts(self):
+        for cpu in self.cpu:
+            # create the interrupt controller CPU and connect to the membus
+            cpu.createInterruptController()
 
     def setDiskImages(self, img_path_1, img_path_2):
         disk0 = CowDisk(img_path_1)
@@ -133,13 +161,52 @@ class MyRubySystem(System):
         self.pc.south_bridge.ide.disks = [disk0, disk2]
 
     def createMemoryControllersDDR3(self):
-        self._createMemoryControllers(1, DDR3_1600_8x8)
+        self._createMemoryControllers(self._num_channels, DDR3_1600_8x8)
 
     def _createMemoryControllers(self, num, cls):
-        self.mem_cntrls = [
-            cls(range = self.mem_ranges[0])
-            for i in range(num)
-        ]
+        # self.mem_cntrls = [
+        #     MemCtrl(dram = cls(range = self.mem_ranges[0]))
+        #     for i in range(num)
+        # ]
+
+
+        mem_ctrls = []
+        num_int = num * self._bpc
+        bpc = self._bpc
+        addr_range = self.mem_ranges[0]
+        intlv_low_bit = 6
+        intlv_bits = int(math.log(num_int, 2))
+
+        for i in range(num_int):
+            interface = LLM()
+            interface.range = AddrRange(addr_range.start, size = addr_range.size(),
+                        intlvHighBit = intlv_low_bit + intlv_bits - 1,
+                        xorHighBit = 0,
+                        intlvBits = intlv_bits,
+                        intlvMatch = i)
+            ctrl = MemCtrl()
+            ctrl.dram = interface
+            interface.device_size = str(int(256 / bpc)) + 'MB'
+            ctrl.dram.read_buffer_size = 2
+            ctrl.dram.write_buffer_size = 8
+            ctrl.dram.page_policy = 'close'
+            ctrl.write_high_thresh_perc = 100
+            ctrl.write_low_thresh_perc = 90
+            ctrl.min_writes_per_switch = 1
+            mem_ctrls.append(ctrl)
+        self.mem_ctrls = mem_ctrls
+
+        scheds = [MemScheduler(read_buffer_size = 1,
+                            write_buffer_size = 1,
+                            resp_buffer_size = 0,
+                            unified_queue = True,
+                            service_write_threshold = 60)
+                            for i in range(num)]
+        self.mem_scheds = scheds
+
+        for i, mem_ctrl in enumerate(self.mem_ctrls):
+            # print(int(i / bpc))
+            self.mem_scheds[int(i / bpc)].mem_side = mem_ctrl.port
 
     def initFS(self, cpus):
         self.pc = Pc()

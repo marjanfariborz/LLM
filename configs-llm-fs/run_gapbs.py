@@ -41,6 +41,7 @@ import argparse
 
 from system import *
 
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description=
                                 "gem5 config file to run GAPBS")
@@ -51,6 +52,8 @@ def parse_arguments():
     parser.add_argument("num_cpus", type = str, help = "Number of CPUs")
     parser.add_argument("mem_sys", type = str,
                         help = "Memory model, Classic or MI_example")
+    parser.add_argument("channels", type = int,
+                        help = "Number of memory channels")
     parser.add_argument("benchmark", type = str,
                         help = "Name of the GAPBS")
     parser.add_argument("synthetic", type = int,
@@ -70,10 +73,10 @@ def writeBenchScript(dir, benchmark_name, size, synthetic):
     input_file_name = '{}/run_{}_{}'.format(dir, benchmark_name, size)
     if (synthetic):
         with open(input_file_name,"w") as f:
-           f.write('./{} -g {}\n'.format(benchmark_name, size))
+           f.write('./{} -g {} -n 1\n'.format(benchmark_name, size))
     elif(synthetic==0):
         with open(input_file_name,"w") as f:
-           f.write('./{} -sf {}'.format(benchmark_name, size))
+           f.write('./{} -sf {} -n 1\n'.format(benchmark_name, size))
 
     return input_file_name
 
@@ -86,26 +89,22 @@ if __name__ == "__m5_main__":
     cpu_type = args.cpu_type
     num_cpus = int(args.num_cpus)
     mem_sys = args.mem_sys
+    num_chnls = args.channels
     benchmark_name = args.benchmark
     benchmark_size = args.graph
     synthetic = args.synthetic
 
     if (mem_sys == "classic"):
-        # system = MySystem(1, '512MB')
-        system = MySystem(cpu_type, num_cpus, 4, 64)
-        # system = MySystem(kernel, disk, cpu_type, num_cpus)
+        system = MySystem(kernel, disk, cpu_type, num_cpus)
     elif (mem_sys == "MI_example" or "MESI_Two_Level"):
-        system = MyRubySystem(kernel, disk, cpu_type, mem_sys, num_cpus)
+        system = MyRubySystem(kernel, disk, mem_sys, num_cpus, num_chnls)
 
-    system.setDiskImage(disk)
-    system.setKernel(kernel)
     # For workitems to work correctly
     # This will cause the simulator to exit simulation when the first work
     # item is reached and when the first work item is finished.
     system.work_begin_exit_count = 1
     system.work_end_exit_count = 1
 
-    m5.disableAllListeners()
     # Read in the script file passed in via an option.
     # This file gets read and executed by the simulated system after boot.
     # Note: The disk image needs to be configured to do this.
@@ -115,19 +114,21 @@ if __name__ == "__m5_main__":
 
     # set up the root SimObject and start the simulation
     root = Root(full_system = True, system = system)
-
+    # m5.disableAllListeners()
     # if system.getHostParallel():
-    # #     # Required for running kvm on multiple host cores.
-    # #     # Uses gem5's parallel event queue feature
-    # #     # Note: The simulator is quite picky about this number!
+        # Required for running kvm on multiple host cores.
+        # Uses gem5's parallel event queue feature
+        # Note: The simulator is quite picky about this number!
     root.sim_quantum = int(1e9) # 1 ms
 
     # instantiate all of the objects we've created above
     m5.instantiate()
 
-    print("Running the simulation")
+    print("Running the simulation with: ", system.cpu)
     exit_event = m5.simulate()
-    if exit_event.getCause() == "workbegin":
+    print('Exiting @ tick {} because {}'
+            .format(m5.curTick(), exit_event.getCause()))
+    if exit_event.getCause() == "work started count reach":
         m5.stats.reset()
         start_tick = m5.curTick()
         start_insts = system.totalInsts()
@@ -135,27 +136,18 @@ if __name__ == "__m5_main__":
         if cpu_type != 'kvm':
             system.switchToTiming()
             # system.switchCpus(system.cpu, system.timingCpu)
-    print("Switch to detailed cpu model")
-    # else:
-    #     print("ROI is not annotated!")
-    #     print('Exiting @ tick {} because {}'
-    #         .format(m5.curTick(), exit_event.getCause()))
-    #     exit()
-
-    exit_event = m5.simulate()
-    print("*********** Switched")
-
-    if exit_event.getCause() == "workend":
-        # exit_event = m5.simulate()
+            print("Switch to detailed cpu model")
+    else:
+        print("ROI is not annotated!")
         print('Exiting @ tick {} because {}'
             .format(m5.curTick(), exit_event.getCause()))
-        # exit()
+        exit()
+
+    exit_event = m5.simulate()
+
+    if exit_event.getCause() == "work items exit count reached":
+        print('Exiting @ tick {} because {}'
+            .format(m5.curTick(), exit_event.getCause()))
         m5.stats.dump()
         m5.stats.reset()
     print("END OF THE SIMULATION")
-    # exit()
-    # exit_event = m5.simulate()
-    # m5.stats.dump()
-    # m5.stats.reset()
-    # print('Exiting @ tick {} because {}'
-    #     .format(m5.curTick(), exit_event.getCause()))

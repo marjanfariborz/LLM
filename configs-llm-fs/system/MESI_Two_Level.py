@@ -32,8 +32,8 @@ instruction and data cache.
 This system support the memory size of up to 3GB.
 """
 
-from __future__ import print_function
-from __future__ import absolute_import
+
+
 
 import math
 
@@ -50,22 +50,17 @@ class MESITwoLevelCache(RubySystem):
 
         super(MESITwoLevelCache, self).__init__()
 
-       
-       
-       
-        # This is the number of "banks" for the L2 cache. This could be parameterized
-        # in the future.
-        self._numL2Caches = 8
 
-    def setup(self, system, cpus, mem_ctrls, dma_ports, iobus):
+    def setup(self, system, cpus, mem_ctrls, mem_schds, dma_ports, iobus, bpc):
         """Set up the Ruby cache subsystem. Note: This can't be done in the
            constructor because many of these items require a pointer to the
            ruby system (self). This causes infinite recursion in initialize()
            if we do this in the __init__.
         """
         # Ruby's global network.
-        self.network = MyNetwork(self)
-
+        self.network = garnetNetwork(self)
+        self._numL2Caches = int(len(cpus)/4)
+        print(self._numL2Caches)
         # MESI_Two_Level example uses 5 virtual networks
         self.number_of_virtual_networks = 5
         self.network.number_of_virtual_networks = 5
@@ -78,29 +73,29 @@ class MESITwoLevelCache(RubySystem):
         self.controllers = \
             [L1Cache(system, self, cpu, self._numL2Caches) for cpu in cpus] + \
             [L2Cache(system, self, self._numL2Caches) for num in range(self._numL2Caches)] + \
-            [DirController(self, system.mem_ranges, mem_ctrls)] + \
+            [DirController(self, system.mem_ranges, mem_ctrls[j*bpc:(bpc*(j+1))],
+                        mem_schds[j]) for j in range(len(mem_schds))] + \
             [DMAController(self) for i in range(len(dma_ports))]
 
         # Create one sequencer per CPU and dma controller.
         # Sequencers for other controllers can be here here.
         self.sequencers = [RubySequencer(version = i,
-                                # I/D cache is combined and grab from ctrl
-                                icache = self.controllers[i].L1Icache,
+                                # Grab dcache from ctrl
                                 dcache = self.controllers[i].L1Dcache,
                                 clk_domain = self.controllers[i].clk_domain,
-                                pio_master_port = iobus.slave,
-                                mem_master_port = iobus.slave,
-                                pio_slave_port = iobus.master
+                                pio_request_port = iobus.cpu_side_ports,
+                                mem_request_port = iobus.cpu_side_ports,
+                                pio_response_port = iobus.mem_side_ports
                                 ) for i in range(len(cpus))] + \
                           [DMASequencer(version = i,
-                                        slave = port)
+                                        in_ports = port)
                             for i,port in enumerate(dma_ports)
                           ]
 
         for i,c in enumerate(self.controllers[:len(cpus)]):
             c.sequencer = self.sequencers[i]
 
-        # Connecting the DMA sequencer to DMA controller
+        #Connecting the DMA sequencer to DMA controller
         for i,d in enumerate(self.controllers[-len(dma_ports):]):
             i += len(cpus)
             d.dma_sequencer = self.sequencers[i]
@@ -109,28 +104,33 @@ class MESITwoLevelCache(RubySystem):
 
         # Create the network and connect the controllers.
         # NOTE: This is quite different if using Garnet!
-        self.network.connectControllers(self.controllers)
-        self.network.setup_buffers()
+        self.network.connectControllers(self.controllers, len(cpus), len(mem_schds))
+        self.network.vcs_per_vnet = 4
+        self.network.ni_flit_size = 128
+        self.network.routing_algorithm = 0
+        self.network.garnet_deadlock_threshold = 50000
 
         # Set up a proxy port for the system_port. Used for load binaries and
         # other functional-only things.
         self.sys_port_proxy = RubyPortProxy()
-        system.system_port = self.sys_port_proxy.slave
-        self.sys_port_proxy.pio_master_port = iobus.slave
+        system.system_port = self.sys_port_proxy.in_ports
+        self.sys_port_proxy.pio_request_port = iobus.cpu_side_ports
 
         # Connect the cpu's cache, interrupt, and TLB ports to Ruby
+        self.monitor = [CommMonitor() for i in cpus]
         for i,cpu in enumerate(cpus):
-            cpu.icache_port = self.sequencers[i].slave
-            cpu.dcache_port = self.sequencers[i].slave
+            cpu.icache_port = self.sequencers[i].in_ports
+            cpu.dcache_port = self.monitor[i].slave 
+            self.monitor[i].master = self.sequencers[i].in_ports
             isa = buildEnv['TARGET_ISA']
             if isa == 'x86':
-                cpu.interrupts[0].pio = self.sequencers[i].master
-                cpu.interrupts[0].int_master = self.sequencers[i].slave
-                cpu.interrupts[0].int_slave = self.sequencers[i].master
+                cpu.interrupts[0].pio = self.sequencers[i].interrupt_out_port
+                cpu.interrupts[0].int_requestor = self.sequencers[i].in_ports
+                cpu.interrupts[0].int_responder = \
+                                        self.sequencers[i].interrupt_out_port
             if isa == 'x86' or isa == 'arm':
-                cpu.itb.walker.port = self.sequencers[i].slave
-                cpu.dtb.walker.port = self.sequencers[i].slave
-
+                cpu.mmu.connectWalkerPorts(
+                    self.sequencers[i].in_ports, self.sequencers[i].in_ports)
 
 class L1Cache(L1Cache_Controller):
 
@@ -165,7 +165,7 @@ class L1Cache(L1Cache_Controller):
                             is_icache = False)
         self.l2_select_num_bits = int(math.log(num_l2Caches , 2))
         self.clk_domain = cpu.clk_domain
-        self.prefetcher = RubyPrefetcher
+        self.prefetcher = RubyPrefetcher()
         self.send_evictions = self.sendEvicts(cpu)
         self.transitions_per_cycle = 4
         self.enable_prefetch = False
@@ -195,18 +195,18 @@ class L1Cache(L1Cache_Controller):
         """
         self.mandatoryQueue = MessageBuffer()
         self.requestFromL1Cache = MessageBuffer()
-        self.requestFromL1Cache.master = ruby_system.network.slave
+        self.requestFromL1Cache.out_port = ruby_system.network.in_port
         self.responseFromL1Cache = MessageBuffer()
-        self.responseFromL1Cache.master = ruby_system.network.slave
+        self.responseFromL1Cache.out_port = ruby_system.network.in_port
         self.unblockFromL1Cache = MessageBuffer()
-        self.unblockFromL1Cache.master = ruby_system.network.slave
+        self.unblockFromL1Cache.out_port = ruby_system.network.in_port
 
         self.optionalQueue = MessageBuffer()
 
         self.requestToL1Cache = MessageBuffer()
-        self.requestToL1Cache.slave = ruby_system.network.master
+        self.requestToL1Cache.in_port = ruby_system.network.out_port
         self.responseToL1Cache = MessageBuffer()
-        self.responseToL1Cache.slave = ruby_system.network.master
+        self.responseToL1Cache.in_port = ruby_system.network.out_port
 
 class L2Cache(L2Cache_Controller):
 
@@ -240,17 +240,17 @@ class L2Cache(L2Cache_Controller):
         """Connect all of the queues for this controller.
         """
         self.DirRequestFromL2Cache = MessageBuffer()
-        self.DirRequestFromL2Cache.master = ruby_system.network.slave
+        self.DirRequestFromL2Cache.out_port = ruby_system.network.in_port
         self.L1RequestFromL2Cache = MessageBuffer()
-        self.L1RequestFromL2Cache.master = ruby_system.network.slave
+        self.L1RequestFromL2Cache.out_port = ruby_system.network.in_port
         self.responseFromL2Cache = MessageBuffer()
-        self.responseFromL2Cache.master = ruby_system.network.slave
+        self.responseFromL2Cache.out_port = ruby_system.network.in_port
         self.unblockToL2Cache = MessageBuffer()
-        self.unblockToL2Cache.slave = ruby_system.network.master
+        self.unblockToL2Cache.in_port = ruby_system.network.out_port
         self.L1RequestToL2Cache = MessageBuffer()
-        self.L1RequestToL2Cache.slave = ruby_system.network.master
+        self.L1RequestToL2Cache.in_port = ruby_system.network.out_port
         self.responseToL2Cache = MessageBuffer()
-        self.responseToL2Cache.slave = ruby_system.network.master
+        self.responseToL2Cache.in_port = ruby_system.network.out_port
 
 
 
@@ -262,27 +262,29 @@ class DirController(Directory_Controller):
         cls._version += 1 # Use count for this particular type
         return cls._version - 1
 
-    def __init__(self, ruby_system, ranges, mem_ctrls):
+    def __init__(self, ruby_system, ranges, mem_ctrls, mem_sched):
         """ranges are the memory ranges assigned to this controller.
         """
-        if len(mem_ctrls) > 1:
-            panic("This cache system can only be connected to one mem ctrl")
+        # if len(mem_ctrls) > 1:
+        #     panic("This cache system can only be connected to one mem ctrl")
         super(DirController, self).__init__()
         self.version = self.versionCount()
-        self.addr_ranges = ranges
+        self.addr_ranges = []
+        for ctrl in mem_ctrls:
+            # print(ctrl.dram.range)
+            self.addr_ranges.append(ctrl.dram.range)
         self.ruby_system = ruby_system
         self.directory = RubyDirectoryMemory()
-        # Connect this directory to the memory side.
-        self.memory = mem_ctrls[0].port
+        self.memory_out_port = mem_sched.cpu_side
         self.connectQueues(ruby_system)
 
     def connectQueues(self, ruby_system):
         self.requestToDir = MessageBuffer()
-        self.requestToDir.slave = ruby_system.network.master
+        self.requestToDir.in_port = ruby_system.network.out_port
         self.responseToDir = MessageBuffer()
-        self.responseToDir.slave = ruby_system.network.master
+        self.responseToDir.in_port = ruby_system.network.out_port
         self.responseFromDir = MessageBuffer()
-        self.responseFromDir.master = ruby_system.network.slave
+        self.responseFromDir.out_port = ruby_system.network.in_port
         self.requestToMemory = MessageBuffer()
         self.responseFromMemory = MessageBuffer()
 
@@ -303,41 +305,87 @@ class DMAController(DMA_Controller):
     def connectQueues(self, ruby_system):
         self.mandatoryQueue = MessageBuffer()
         self.responseFromDir = MessageBuffer(ordered = True)
-        self.responseFromDir.slave = ruby_system.network.master
+        self.responseFromDir.in_port = ruby_system.network.out_port
         self.requestToDir = MessageBuffer()
-        self.requestToDir.master = ruby_system.network.slave
+        self.requestToDir.out_port = ruby_system.network.in_port
 
 
-class MyNetwork(SimpleNetwork):
+class garnetNetwork(GarnetNetwork):
     """A simple point-to-point network. This doesn't not use garnet.
     """
 
     def __init__(self, ruby_system):
-        super(MyNetwork, self).__init__()
-        self.netifs = []
+        super(garnetNetwork, self).__init__()
+
+
         self.ruby_system = ruby_system
 
-    def connectControllers(self, controllers):
+    def connectControllers(self, controllers, num_cpus, mem_schds):
         """Connect all of the controllers to routers and connec the routers
            together in a point-to-point network.
         """
         # Create one router/switch per controller in the system
-        self.routers = [Switch(router_id = i) for i in range(len(controllers))]
+        self.routers = [GarnetRouter(router_id = i) for i in range(len(controllers))]
+        itr = int(5*num_cpus/4)
+        print(itr)
+        self._L1 = [i for i in self.routers[0:num_cpus]]
+        self._L2 = [i for i in self.routers[num_cpus:itr]]
+        self._Dir = [i for i in self.routers[itr:mem_schds+itr]]
+        self._DMA = [i for i in self.routers[mem_schds+itr:]]
 
         # Make a link from each controller to the router. The link goes
         # externally to the network.
-        self.ext_links = [SimpleExtLink(link_id=i, ext_node=c,
+        self.ext_links = [GarnetExtLink(link_id=i, ext_node=c,
                                         int_node=self.routers[i])
                           for i, c in enumerate(controllers)]
 
+        self.netifs = [GarnetNetworkInterface(id=i) \
+                    for (i,n) in enumerate(self.ext_links)]
         # Make an "internal" link (internal to the network) between every pair
         # of routers.
         link_count = 0
         self.int_links = []
-        for ri in self.routers:
-            for rj in self.routers:
-                if ri == rj: continue # Don't connect a router to itself!
+        # for i, ri in enumerate(self._L2):
+        for j, rj in enumerate(self._L1):
+                # if ri == rj: continue # Don't connect a router to itself!
+            link_count += 1
+            self.int_links.append(GarnetIntLink(link_id = link_count,
+                                                        src_node = rj,
+                                                        dst_node = self._L2[int(j/4)],
+                                                        latency = 4,
+                                                        weight  = 1))
+            link_count += 1
+            self.int_links.append(GarnetIntLink(link_id = link_count,
+                                                        src_node = self._L2[int(j/4)],
+                                                        dst_node = rj,
+                                                        latency = 4,
+                                                        weight  = 1))
+        for i, ri in enumerate(self._L2):
+            for j, rj in enumerate(self._Dir):
                 link_count += 1
-                self.int_links.append(SimpleIntLink(link_id = link_count,
-                                                    src_node = ri,
-                                                    dst_node = rj))
+                self.int_links.append(GarnetIntLink(link_id = link_count,
+                                                        src_node = rj,
+                                                        dst_node = ri,
+                                                        latency = 16,
+                                                        weight  = 1))
+                link_count += 1
+                self.int_links.append(GarnetIntLink(link_id = link_count,
+                                                        src_node = ri,
+                                                        dst_node = rj,
+                                                        latency = 16,
+                                                        weight  = 1))
+
+        for i, ri in enumerate(self._L2 + self._L1 + self._Dir):
+            for j, rj in enumerate(self._DMA):
+                link_count += 1
+                self.int_links.append(GarnetIntLink(link_id = link_count,
+                                                        src_node = rj,
+                                                        dst_node = ri,
+                                                        latency = 1,
+                                                        weight  = 1))
+                link_count += 1
+                self.int_links.append(GarnetIntLink(link_id = link_count,
+                                                        src_node = ri,
+                                                        dst_node = rj,
+                                                        latency = 1,
+                                                        weight  = 1))
