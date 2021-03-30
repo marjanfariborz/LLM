@@ -67,7 +67,7 @@ class MOESIHammerCache(RubySystem):
 
 
         pf_size = MemorySize('1 MB')
-        pf_size.value = pf_size.value * 2
+        pf_size.value = pf_size.value * 2 * self._numL2Caches / len(mem_ctrls)
         dir_bits = int(math.log(len(mem_schds), 2))
         pf_bits = int(math.log(pf_size.value, 2))
         block_size_bits = int(math.log(system.cache_line_size, 2))
@@ -86,13 +86,15 @@ class MOESIHammerCache(RubySystem):
         # There is a single global list of all of the controllers to make it
         # easier to connect everything to the global network. This can be
         # customized depending on the topology/network requirements.
-        # L1 caches are private to a core, hence there are one L1 cache per CPU core.
-        # The number of L2 caches are dependent to the architecture.
+        # L1 and L2 caches are private to a core, hence there are one of
+        # each per CPU core.
         self.controllers = \
             [L1Cache(system, self, cpu, self._numL2Caches) for cpu in cpus] + \
             [DirController(self, system.mem_ranges, mem_ctrls[j*bpc:(bpc*(j+1))],
                         mem_schds[j], pf_size, pf_start_bit) for j in range(len(mem_schds))] + \
             [DMAController(self) for i in range(len(dma_ports))]
+        print(len(dma_ports))
+        print(len(self.controllers))
 
         # Create one sequencer per CPU and dma controller.
         # Sequencers for other controllers can be here here.
@@ -121,11 +123,7 @@ class MOESIHammerCache(RubySystem):
 
         # Create the network and connect the controllers.
         # NOTE: This is quite different if using Garnet!
-        self.network.connectControllers(self.controllers, len(cpus))
-        self.network.vcs_per_vnet = 4
-        self.network.ni_flit_size = 128
-        self.network.routing_algorithm = 0
-        self.network.garnet_deadlock_threshold = 50000
+        self.network.connectControllers(self.controllers, len(cpus), len(mem_schds))
 
         # Set up a proxy port for the system_port. Used for load binaries and
         # other functional-only things.
@@ -169,7 +167,7 @@ class L1Cache(L1Cache_Controller):
         block_size_bits = int(math.log(system.cache_line_size, 2))
         l1i_size = '32kB'
         l1i_assoc = '2'
-        l1d_size = '512kB'
+        l1d_size = '32kB'
         l1d_assoc = '8'
         # This is the cache memory object that stores the cache data and tags
         self.L1Icache = RubyCache(size = l1i_size,
@@ -181,14 +179,12 @@ class L1Cache(L1Cache_Controller):
                             start_index_bit = block_size_bits,
                             is_icache = False)
         self.L2cache = RubyCache(size ='1 MB',
-                           assoc =16,
+                           assoc =8,
                            start_index_bit = self.getBlockSizeBitsL2(system, num_l2Caches))
-        # self.l2_select_num_bits = int(math.log(num_l2Caches , 2))
         self.clk_domain = cpu.clk_domain
         self.prefetcher = RubyPrefetcher()
         self.send_evictions = self.sendEvicts(cpu)
         self.transitions_per_cycle = 4
-        # self.enable_prefetch = False
         self.ruby_system = ruby_system
         self.connectQueues(ruby_system)
 
@@ -232,50 +228,6 @@ class L1Cache(L1Cache_Controller):
         self.unblockFromCache = MessageBuffer()
         self.unblockFromCache.out_port = ruby_system.network.in_port
 
-# class L2Cache(L2Cache_Controller):
-
-#     _version = 0
-#     @classmethod
-#     def versionCount(cls):
-#         cls._version += 1 # Use count for this particular type
-#         return cls._version - 1
-
-#     def __init__(self, system, ruby_system, num_l2Caches):
-
-#         super(L2Cache, self).__init__()
-
-#         self.version = self.versionCount()
-#         # This is the cache memory object that stores the cache data and tags
-#         self.L2cache = RubyCache(size = '1 MB',
-#                                 assoc = 16,
-#                                 start_index_bit = self.getBlockSizeBits(system, num_l2Caches))
-
-#         self.transitions_per_cycle = '4'
-#         self.ruby_system = ruby_system
-#         self.connectQueues(ruby_system)
-
-#     def getBlockSizeBits(self, system, num_l2caches):
-#         l2_bits = int(math.log(num_l2caches, 2))
-#         bits = int(math.log(system.cache_line_size, 2)) + l2_bits
-#         return bits
-
-
-#     def connectQueues(self, ruby_system):
-#         """Connect all of the queues for this controller.
-#         """
-#         self.DirRequestFromL2Cache = MessageBuffer()
-#         self.DirRequestFromL2Cache.out_port = ruby_system.network.in_port
-#         self.L1RequestFromL2Cache = MessageBuffer()
-#         self.L1RequestFromL2Cache.out_port = ruby_system.network.in_port
-#         self.responseFromL2Cache = MessageBuffer()
-#         self.responseFromL2Cache.out_port = ruby_system.network.in_port
-#         self.unblockToL2Cache = MessageBuffer()
-#         self.unblockToL2Cache.in_port = ruby_system.network.out_port
-#         self.L1RequestToL2Cache = MessageBuffer()
-#         self.L1RequestToL2Cache.in_port = ruby_system.network.out_port
-#         self.responseToL2Cache = MessageBuffer()
-#         self.responseToL2Cache.in_port = ruby_system.network.out_port
-
 
 
 class DirController(Directory_Controller):
@@ -289,8 +241,6 @@ class DirController(Directory_Controller):
     def __init__(self, ruby_system, ranges, mem_ctrls, mem_sched, pf_size, pf_start_bit):
         """ranges are the memory ranges assigned to this controller.
         """
-        # if len(mem_ctrls) > 1:
-        #     panic("This cache system can only be connected to one mem ctrl")
         super(DirController, self).__init__()
         self.ProbeFilter = RubyCache(size = pf_size, assoc = 4,
                          start_index_bit = pf_start_bit)
@@ -302,24 +252,14 @@ class DirController(Directory_Controller):
         self.ruby_system = ruby_system
         self.directory = RubyDirectoryMemory()
         self.memory_out_port = mem_sched.cpu_side
-        pf = self.ProbeFilter
-        self.connectQueues(ruby_system, pf)
-    def connectQueues(self, ruby_system, pf):
-
-        self.probeFilter = pf
         self.probe_filter_enabled = True
         self.full_bit_dir_enabled = True
-        # self.requestToDir = MessageBuffer()
-        # self.requestToDir.in_port = ruby_system.network.out_port
-        # self.responseToDir = MessageBuffer()
-        # self.responseToDir.in_port = ruby_system.network.out_port
-        # self.responseFromDir = MessageBuffer()
-        # self.responseFromDir.out_port = ruby_system.network.in_port
-        # self.requestToMemory = MessageBuffer()
-        # self.responseFromMemory = MessageBuffer()
+        pf = self.ProbeFilter
 
+        self.connectQueues(ruby_system, pf)
 
-
+    def connectQueues(self, ruby_system, pf):
+        self.probeFilter = pf
         self.forwardFromDir = MessageBuffer()
         self.forwardFromDir.in_port = ruby_system.network.out_port
         self.responseFromDir = MessageBuffer()
@@ -369,16 +309,20 @@ class garnetNetwork(GarnetNetwork):
     def __init__(self, ruby_system):
         super(garnetNetwork, self).__init__()
 
-
+        self.vcs_per_vnet = 4
+        self.ni_flit_size = 128
+        self.routing_algorithm = 0
+        self.garnet_deadlock_threshold = 50000
         self.ruby_system = ruby_system
 
-    def connectControllers(self, controllers, num_cpus):
+    def connectControllers(self, controllers, num_cpus, num_scheduler):
         """Connect all of the controllers to routers and connec the routers
            together in a point-to-point network.
         """
         # Create one router/switch per controller in the system
-        self.routers = [GarnetRouter(router_id = i) for i in range(len(controllers))]
-
+        self.routers = [GarnetRouter(router_id = i) for i in range(num_cpus)] + \
+                    [GarnetRouter(router_id = i + num_cpus, latency = 60) for i in range(num_scheduler)] + \
+                    [GarnetRouter(router_id = i + num_cpus + num_scheduler) for i in range(len(controllers)-num_cpus-num_scheduler)]
         # Make a link from each controller to the router. The link goes
         # externally to the network.
         self.ext_links = [GarnetExtLink(link_id=i, ext_node=c,
@@ -394,12 +338,12 @@ class garnetNetwork(GarnetNetwork):
         for i, ri in enumerate(self.routers):
             for j, rj in enumerate(self.routers):
                 if ri == rj: continue # Don't connect a router to itself!
-                if( i < 2 * num_cpus and j < 2 * num_cpus):
+                if( i < (num_cpus + num_scheduler) and j < (num_cpus + num_scheduler)):
                     link_count += 1
                     self.int_links.append(GarnetIntLink(link_id = link_count,
                                                         src_node = ri,
                                                         dst_node = rj,
-                                                        latency = 3,
+                                                        latency = 4,
                                                         weight  = 1))
                 else:
                     link_count += 1
