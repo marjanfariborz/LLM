@@ -96,7 +96,7 @@ if __name__ == "__m5_main__":
 
     if (mem_sys == "classic"):
         system = MySystem(kernel, disk, cpu_type, num_cpus)
-    elif (mem_sys == "MI_example" or "MESI_Two_Level" or "MOESI_Hammer"):
+    elif (mem_sys == "MI_example" or "MESI_Two_Level" or "MOESI_hammer"):
         system = MyRubySystem(kernel, disk, mem_sys, num_cpus, num_chnls)
 
     # For workitems to work correctly
@@ -115,10 +115,6 @@ if __name__ == "__m5_main__":
     # set up the root SimObject and start the simulation
     root = Root(full_system = True, system = system)
     # m5.disableAllListeners()
-    # if system.getHostParallel():
-        # Required for running kvm on multiple host cores.
-        # Uses gem5's parallel event queue feature
-        # Note: The simulator is quite picky about this number!
     root.sim_quantum = int(1e9) # 1 ms
 
     # instantiate all of the objects we've created above
@@ -144,10 +140,9 @@ if __name__ == "__m5_main__":
         exit()
 
     exit_event = m5.simulate()
-
+    m5.stats.dump()
+    m5.stats.reset()
     if exit_event.getCause() == "work items exit count reached":
         print('Exiting @ tick {} because {}'
             .format(m5.curTick(), exit_event.getCause()))
-        m5.stats.dump()
-        m5.stats.reset()
     print("END OF THE SIMULATION")

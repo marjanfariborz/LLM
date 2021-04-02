@@ -75,8 +75,8 @@ class MyRubySystem(System):
             from .MI_example_caches import MIExampleSystem
             self.caches = MIExampleSystem()
         elif mem_sys == 'MESI_Two_Level':
-            from .MESI_Two_Level import MESITwoLevelCache
-            self.caches = MESITwoLevelCache()
+            from .MESI_Two_Level2 import MESITwoLevelCache2
+            self.caches = MESITwoLevelCache2()
         elif mem_sys == 'MOESI_hammer':
             from .MOESI_hammer import MOESIHammerCache
             self.caches = MOESIHammerCache()
@@ -86,19 +86,9 @@ class MyRubySystem(System):
                            self.iobus.mem_side_ports],
                           self.iobus, self._bpc)
 
-        # if self._host_parallel:
-        #     # To get the KVM CPUs to run on different host CPUs
-        #     # Specify a different event queue for each CPU
-        #     for i,cpu in enumerate(self.cpu):
-        #         for obj in cpu.descendants():
-        #             obj.eventq_index = 0
-        #         cpu.eventq_index = i + 1
-    # def getHostParallel(self):
-    #     return self._host_parallel
-
     def totalInsts(self):
         return sum([cpu.totalInsts() for cpu in self.cpu])
-
+    
     def createEventQueues(self, cpuList):
         for i, cpu in enumerate(cpuList):
             for obj in cpu.descendants():
@@ -116,10 +106,6 @@ class MyRubySystem(System):
         self.createEventQueues(self.cpu)
         self.kvm_vm = KvmVM()
         self.mem_mode = 'atomic_noncaching'
-
-        # self.atomicCpu = [AtomicSimpleCPU(cpu_id = i, switched_out = True)
-        #                 for i in range(num_cpus)]
-        # self.createCPUThreads(self.atomicCpu)
 
         self.timingCpu = [TimingSimpleCPU(cpu_id = i, switched_out = True)
                         for i in range(num_cpus)]
@@ -152,7 +138,7 @@ class MyRubySystem(System):
     def switchCpus(self, old, new):
         assert(new[0].switchedOut())
         m5.switchCpus(self, list(zip(old, new)))
-
+    
     def setupInterrupts(self):
         for cpu in self.cpu:
             # create the interrupt controller CPU and connect to the membus
@@ -167,11 +153,6 @@ class MyRubySystem(System):
         self._createMemoryControllers(self._num_channels, DDR3_1600_8x8)
 
     def _createMemoryControllers(self, num, cls):
-        # self.mem_cntrls = [
-        #     MemCtrl(dram = cls(range = self.mem_ranges[0]))
-        #     for i in range(num)
-        # ]
-
 
         mem_ctrls = []
         num_int = num * self._bpc
@@ -187,6 +168,7 @@ class MyRubySystem(System):
                         xorHighBit = 0,
                         intlvBits = intlv_bits,
                         intlvMatch = i)
+            interface.subarray_per_bank = 8
             ctrl = MemCtrl()
             ctrl.dram = interface
             interface.device_size = str(int(256 / bpc)) + 'MB'
